@@ -54,6 +54,8 @@ public sealed class EtlRun : IAsyncDisposable
         if (!readResults)
             throw new UniversalDataException((int)StatusCode.Invalid,
                 "This ETL run was not started with result reading enabled");
+        EntityRowFactory<T>? factory = null;
+        string? resultSchema = null;
         while (true)
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
@@ -83,7 +85,13 @@ public sealed class EtlRun : IAsyncDisposable
                         new(Id, JournalTicket: JournalTicket),
                         new(ErrorSource.Worker, StatusCode.Protocol, "Missing result batch"));
                 using var batch = Batch.FromWire(response.Batch.Bytes, response.Batch.Length);
-                foreach (var row in batch.EnumerateEntities<T>())
+                string schema = batch.SchemaJson;
+                if (factory is null || !string.Equals(resultSchema, schema, StringComparison.Ordinal))
+                {
+                    factory = new(ManagedBatch.BuildEntityProjection<T>(schema));
+                    resultSchema = schema;
+                }
+                foreach (var row in batch.EnumerateEntities(factory, cancellation))
                     yield return row;
             }
         }

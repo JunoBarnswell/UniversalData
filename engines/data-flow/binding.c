@@ -266,6 +266,29 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
     if (!s && kind == SQL_SOURCE) {
         int stream = 0;
         s = ud_builtin_source_read_mode(c, config, &stream);
+        const ud_json *table_query = ud_member(config, "tableQuery");
+        if (!s && table_query) {
+            static const char *source_keys[] = {"connection", "schema", "batchSize", "readMode",
+                                                "table", "parameters", "schemaPolicy", "tableQuery",
+                                                "errorPolicy", "includeInput"};
+            static const char *query_keys[] = {"where", "projection", "order", "ranges"};
+            s = ud_json_keys(config, source_keys, sizeof(source_keys) / sizeof(*source_keys));
+            if (!s && (!stream || !ud_member(config, "table") || ud_member(config, "sql")))
+                s = UD_SCHEMA;
+            if (!s)
+                s = ud_json_keys(table_query, query_keys, sizeof(query_keys) / sizeof(*query_keys));
+            const ud_json *projection = !s ? ud_member(table_query, "projection") : NULL;
+            const ud_json *ranges = !s ? ud_member(table_query, "ranges") : NULL;
+            const ud_json *order = !s ? ud_member(table_query, "order") : NULL;
+            const ud_json *where = !s ? ud_member(table_query, "where") : NULL;
+            if (!s && (ud_json_kind(projection) != UD_JSON_ARRAY || !ud_json_size(projection) ||
+                       ud_json_kind(ranges) != UD_JSON_ARRAY || !ud_json_size(ranges)))
+                s = UD_SCHEMA;
+            if (!s && order && ud_json_kind(order) != UD_JSON_ARRAY)
+                s = UD_SCHEMA;
+            if (!s && where && ud_json_kind(where) != UD_JSON_OBJECT)
+                s = UD_SCHEMA;
+        }
     }
     if (!s && source_kind(kind)) {
         uint64_t count = 1, id = 0, begin = 0, end = UINT64_MAX;

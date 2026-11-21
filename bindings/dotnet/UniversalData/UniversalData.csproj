@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../metadata/ProductVersion.props" />
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>$(UDDotnetTargetFramework)</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>UniversalData</PackageId>
@@ -13,7 +13,7 @@
   <PropertyGroup Condition="'$(IncludeUniversalDataRuntimeDependencies)' == 'true'">
     <NuspecFile>$(MSBuildProjectDirectory)/UniversalData.nuspec</NuspecFile>
     <NuspecBasePath>$(MSBuildProjectDirectory)</NuspecBasePath>
-    <NuspecProperties>version=$(UDSdkVersion);SqlSugarCore=$(UDSqlSugarCoreVersion);MySqlConnector=$(UDMySqlConnectorVersion);SQLitePCLRawlibe_sqlite3=$(UDSQLitePCLRawlibe_sqlite3Version);SystemSecurityCryptographyPkcs=$(UDSystemSecurityCryptographyPkcsVersion);YamlDotNet=$(UDYamlDotNetVersion)</NuspecProperties>
+    <NuspecProperties>version=$(UDSdkVersion);SqlSugarCore=$(UDSqlSugarCoreVersion);MySqlConnector=$(UDMySqlConnectorVersion);SQLitePCLRawlibe_sqlite3=$(UDSQLitePCLRawlibe_sqlite3Version);SystemSecurityCryptographyPkcs=$(UDSystemSecurityCryptographyPkcsVersion);YamlDotNet=$(UDYamlDotNetVersion);MicrosoftExtensionsDependencyInjectionAbstractions=$(UDMicrosoftExtensionsDependencyInjectionAbstractionsVersion);MicrosoftExtensionsConfigurationAbstractions=$(UDMicrosoftExtensionsConfigurationAbstractionsVersion)</NuspecProperties>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SqlSugarCore" Version="[$(UDSqlSugarCoreVersion)]" />
@@ -21,5 +21,7 @@
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="[$(UDSQLitePCLRawlibe_sqlite3Version)]" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="[$(UDSystemSecurityCryptographyPkcsVersion)]" />
     <PackageReference Include="YamlDotNet" Version="[$(UDYamlDotNetVersion)]" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="[$(UDMicrosoftExtensionsDependencyInjectionAbstractionsVersion)]" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="[$(UDMicrosoftExtensionsConfigurationAbstractionsVersion)]" />
   </ItemGroup>
 </Project>

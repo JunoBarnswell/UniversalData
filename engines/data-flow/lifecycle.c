@@ -27,6 +27,11 @@ ud_status ud_builtin_diagnostics(void *ptr, char **out, uint32_t *length) {
         n = snprintf(head, sizeof(head), ",\"predicatePushed\":%s,\"readColumns\":%u",
                      b->predicate_pushed ? "true" : "false", physical->columns);
         status = ud_bytes_put(&json, head, (size_t)n);
+        if (!status && b->read_sql.length && ud_member(b->config, "tableQuery")) {
+            status = ud_bytes_put(&json, ",\"readSql\":", sizeof(",\"readSql\":") - 1);
+            if (!status)
+                status = ud_json_quote(&json, b->read_sql.data, b->read_sql.length);
+        }
     }
     if (!status && cursor) {
         status = ud_bytes_put(&json, ",\"cursor\":", 10);

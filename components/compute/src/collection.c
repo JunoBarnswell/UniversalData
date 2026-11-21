@@ -167,10 +167,26 @@ int ud_compute_stage_order(const ud_batch *left, uint32_t left_row, const ud_bat
     return !x ? 0 : (a.source_position > b.source_position) - (a.source_position < b.source_position);
 }
 
-static ud_status stable_sort(ud_context *c, const ud_batch *b, uint32_t key, int32_t descending,
-                             ud_batch **out) {
+int ud_compute_compare_keys(const ud_batch *left, uint32_t left_row, const ud_batch *right,
+                            uint32_t right_row, const uint32_t *keys, uint32_t count,
+                            int descending, uint32_t directions, int stage_ordered) {
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t key = keys[i];
+        ud_value x, y;
+        ud_batch_get(left, left_row, key, &x);
+        ud_batch_get(right, right_row, key, &y);
+        const ud_field *field = &left->column[key].field;
+        int order = ud_field_value_compare(field, &x, field, &y);
+        if (order)
+            return ud_key_descending(descending, directions, i) ? -order : order;
+    }
+    return stage_ordered ? ud_compute_stage_order(left, left_row, right, right_row) : 0;
+}
+
+ud_status ud_compute_sort_keys(ud_context *c, const ud_batch *b, const uint32_t *keys,
+                               uint32_t count, int descending, uint32_t directions,
+                               int stage_ordered, ud_batch **out) {
     *out = NULL;
-    const ud_field *field = key == UINT32_MAX ? NULL : &b->column[key].field;
     uint32_t rows = ud_batch_rows(b), n = ud_batch_columns(b);
     uint32_t *order = ud_alloc(c, (size_t)rows * sizeof(*order) + 1),
              *scratch = ud_alloc(c, (size_t)rows * sizeof(*scratch) + 1);
@@ -186,17 +202,8 @@ static ud_status stable_sort(ud_context *c, const ud_batch *b, uint32_t key, int
             uint64_t mid = lo + width < rows ? lo + width : rows,
                      hi = lo + 2 * width < rows ? lo + 2 * width : rows, a = lo, z = mid, k = lo;
             while (a < mid && z < hi) {
-                int cmp;
-                if (field) {
-                    ud_value x, y;
-                    ud_batch_get(b, order[a], key, &x);
-                    ud_batch_get(b, order[z], key, &y);
-                    cmp = ud_field_value_compare(field, &x, field, &y);
-                } else {
-                    cmp = ud_compute_stage_order(b, order[a], b, order[z]);
-                }
-                if (descending)
-                    cmp = -cmp;
+                int cmp = ud_compute_compare_keys(b, order[a], b, order[z], keys, count,
+                                                  descending, directions, stage_ordered);
                 scratch[k++] = cmp <= 0 ? order[a++] : order[z++];
             }
             while (a < mid)
@@ -218,12 +225,8 @@ static ud_status stable_sort(ud_context *c, const ud_batch *b, uint32_t key, int
     if (!s)
         s = ud_batch_create(c, f, n, rows, out);
     ud_free(f);
-    ud_value *v = ud_alloc(c, n * sizeof(*v));
-    if (!v && !s)
-        s = UD_RESOURCE;
     for (uint32_t i = 0; !s && i < rows; i++)
-        s = append_row(*out, b, order[i], v);
-    ud_free(v);
+        s = ud_batch_append_from(*out, b, order[i]);
     ud_free(order);
     ud_free(scratch);
     if (s && *out) {
@@ -237,9 +240,5 @@ ud_status ud_compute_sort(ud_context *c, const ud_batch *b, uint32_t key, int32_
                           ud_batch **out) {
     if (!b || !out || key >= ud_batch_columns(b) || (descending != 0 && descending != 1))
         return UD_INVALID;
-    return stable_sort(c, b, key, descending, out);
-}
-
-ud_status ud_compute_sort_stage_order(ud_context *c, const ud_batch *b, ud_batch **out) {
-    return stable_sort(c, b, UINT32_MAX, 0, out);
+    return ud_compute_sort_keys(c, b, &key, 1, descending, 0, 0, out);
 }

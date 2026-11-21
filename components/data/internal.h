@@ -91,7 +91,9 @@ ud_status ud_batch_hash_rows(const ud_batch *, ud_sha256 *);
 ud_status ud_batch_hash_tagged_rows(const ud_batch *, ud_sha256 *, uint8_t port);
 void ud_sql_lookup_ordinal_name(const ud_batch *, char name[48]);
 
-/* Native SQL session compilation; parameters are an owned, sealed one-row batch. */
+/* Native SQL session/table-query compilation; parameters are an owned, sealed
+ * one-row batch.  The document accepts the legacy page/size shape and the
+ * source's nested tableQuery wire contract. */
 ud_status ud_sql_validate_session_command(ud_string, int);
 ud_status ud_sql_bind_command(ud_context *, int32_t, int32_t, ud_string, const ud_batch *,
                               ud_string *, ud_batch **);

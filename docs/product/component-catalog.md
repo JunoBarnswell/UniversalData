@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 11.0.0，唯一 ABI/协议 15。Linux 与 Windows 均须验收。下列目录记录审查源码的组件入口和能力边界，不等于当前运行验收；50 项适用整改状态见 metadata/product.json 的 goals。
+SDK 12.0.0，唯一 ABI/协议 15。Linux 与 Windows 均须验收。下列目录记录审查源码的组件入口和能力边界，不等于当前运行验收；50 项适用整改状态见 metadata/product.json 的 goals。
 
 | SSIS 职责 | 实际入口/ID | 实现与边界 |
 |---|---|---|

@@ -1,6 +1,6 @@
 # UniversalData NuGet MariaDB example
 
-The .NET 8 console project consumes the `UniversalData` 8.0 NuGet package. Its read-only mode uses the official SqlSugarCore API in a leased Worker to run `SELECT 1` and `SELECT VERSION()`. The `--etl` mode compiles a typed `DataClient.Etl` chain and runs it in the same Native Package engine as other ETL workloads.
+The .NET 10 console project consumes the `UniversalData` 12.0 NuGet package. Its read-only mode uses the official SqlSugarCore API in a leased Worker to run `SELECT 1` and `SELECT VERSION()`. The `--etl` mode compiles a typed DataJob chain and runs it in the same Native Package engine as other ETL workloads.
 
 ## Build and configure
 
@@ -18,7 +18,7 @@ Set `UD_POLICY_FILE` to the absolute path of the host policy. Substitute the dem
   "dataDirectory": "/absolute/path/to/demo-state",
   "fileRoots": [],
   "networkOrigins": [],
-  "pluginRoots": ["/absolute/path/to/bin/Release/net8.0"],
+  "pluginRoots": ["/absolute/path/to/bin/Release/net10.0"],
   "credentialFiles": {},
   "maxConcurrency": 2,
   "resources": {

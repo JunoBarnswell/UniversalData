@@ -1,6 +1,16 @@
-# UniversalData C# SDK 11 / Native ABI 15
+# UniversalData C# SDK 12 / Native ABI 15
 
-`UniversalData` 11.0.0 使用对应平台的 Runtime、SqlSugarCore 5.1.4.216 和 YamlDotNet 16.3.0。C# 通过命名数据源、强类型输入和行类型声明作业。Worker 接收 Native v15 Package，由 C 内核访问外部系统并执行数据流、控制流和事务。
+`UniversalData` 12.0.0 目标框架为 .NET 10。SDK 使用对应平台的 Runtime、SqlSugarCore 5.1.4.216 和 YamlDotNet 16.3.0。C# 通过命名数据源、强类型输入和行类型声明作业。Worker 接收 Native v15 Package，由 C 内核访问外部系统并执行数据流、控制流和事务。
+
+## 宿主注册
+
+```csharp
+builder.Services.AddUniversalData(
+    builder.Configuration.GetRequiredSection("UniversalData"),
+    builder.Environment.ContentRootPath);
+```
+
+`UniversalData` 配置节填写 `ConfigPath`。相对路径以应用的 Content Root 为基准，YAML 内部的相对引用以 YAML 所在目录为基准。也可调用 `AddUniversalData(yamlPath)` 或 `AddUniversalData(policyFile, tenant, configure)`。注册时核对文件入口，根容器首次解析时创建一个 `IDataClient`，首次执行时启动本地 Worker。业务服务通过构造函数注入客户端，请求持有并释放本次执行或枚举，宿主关闭时异步释放客户端和 Worker 池。示例包含 Generic Host、ASP.NET Core 和 PostgreSQL 一主两从。 [宿主示例](../examples/dotnet10-hosting/README.md)
 
 ```csharp
 var syncOrders = DataJob.Define<SyncOrders>("orders.sync")
@@ -22,7 +32,29 @@ public sealed record Order(long Id, bool IsPaid,
 
 ## 查询、管道与事务
 
-`Return()` 声明类型化行流，`RunAsync` 返回 `IAsyncEnumerable<T>`。Worker 每次发送一个有界 Native 批次，SDK 按需投影为业务类型。使用 `await foreach` 读取。可重读的大型查询可在 `FromSql` 或 `FromTable` 上启用 `stream: true`。事务内查询和需要回执的目标使用默认快照读取。
+`Return()` 声明类型化行流，`RunAsync` 返回 `IAsyncEnumerable<T>`。Worker 每次发送一个有界 Native 批次，SDK 按需投影为业务类型。使用 `await foreach` 消费行流，也可对有限页调用 .NET 10 的 `ToListAsync`。
+
+```csharp
+var pageQuery = DataJob.Define<OrderPage>("orders.page")
+    .QueryTable<Order>("finance", "orders", step: "read-page")
+    .Where((row, input) => row.IsPaid && row.Id >= input.FromId)
+    .OrderByDescending(row => row.Amount)
+    .ThenBy(row => row.Id)
+    .Skip(input => input.Offset)
+    .Take(input => input.Size)
+    .Select(row => new OrderSummary(row.Id, row.Amount))
+    .Return();
+
+var page = await data.RunAsync(pageQuery, new OrderPage(1000, 0, 50), ct).ToListAsync(ct);
+
+public sealed record OrderPage(long FromId, int Offset, int Size);
+public sealed record OrderSummary(long Id,
+    [property: SugarColumn(Length = 18, DecimalDigits = 2)] decimal Amount);
+```
+
+`QueryTable` 将字段比较、强类型参数、空值判断、直接字段投影、别名和复合排序交给数据库执行。Native 读取真实表结构，按实际主键收尾决定并列行的顺序。前置筛选和排序完成后按声明顺序计算 `Skip` 与 `Take`。页上限为 65,536 行，`Take(0)` 返回空页，负数产生参数错误。对会影响比较等价性的数据库类型或排序规则，Native 在读取结果前返回作业及步骤错误。跨页一致性依赖同一份源数据快照。
+
+文件、Iceberg 和跨源有限结果用 `DataJobRows.OrderBy` 和 `ThenBy` 声明逐键方向。Native 执行稳定排序并使用配置的溢写配额，`Skip` 和 `Take` 在批次上切片，分页游标进入检查点。持续流使用事件时间窗口。可重读的大型 SQL 读取可在 `FromSql` 或 `FromTable` 上启用 `stream: true`。事务内查询和需要回执的目标使用默认快照读取。
 
 ```csharp
 var find = DataJob.Define<SyncOrders>("orders.find");

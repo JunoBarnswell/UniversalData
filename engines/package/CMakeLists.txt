@@ -26,6 +26,7 @@ if(UD_WITH_XML)
   list(APPEND src ${PROJECT_SOURCE_DIR}/connectors/xml.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/xml.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/xml.c)
 endif()
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/results.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/row_range.c
   ${CMAKE_CURRENT_SOURCE_DIR}/incremental.c ${PROJECT_SOURCE_DIR}/catalog/incremental.c
   ${PROJECT_SOURCE_DIR}/catalog/job_calendar.c ${PROJECT_SOURCE_DIR}/catalog/dispatch.c
   ${PROJECT_SOURCE_DIR}/catalog/placement.c ${PROJECT_SOURCE_DIR}/catalog/publication.c)

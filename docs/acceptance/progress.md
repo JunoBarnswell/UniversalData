@@ -2,11 +2,11 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 11.0.0 / ABI 15；SDK 11.0.0 source shipped to main. Linux execution evidence is scoped. The complete release remains open.。
+SDK 12.0.0 / ABI 15；SDK 12.0.0 .NET 10/IoC source is on main. Exact runtime receipts are pending; the complete release remains open.。
 
 门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
-已审查源码：`915d3087cae2115edd5cfebf847a93b6fa65cafc`；[对应 CI](https://github.com/JunoBarnswell/UniversalData/actions/runs/44905136912)（2026-11-21T12:46:54Z 核对）：GitHub Actions status was recorded for this source. See the Linux evidence for the local PRODUCT run, verified behavior and open release gates.
+已审查源码：`c5541fedeff57926b28d638a1052f0a3710ce4e6`；[对应 CI](https://github.com/JunoBarnswell/UniversalData/actions/runs/44905136912)（2026-11-21T12:46:54Z 核对）：Exact .NET 10/IoC runtime receipts are not recorded yet; release gates remain open and no release claim is made.
 
 下表的历史进展不计入当前验收。流处理/湖表能力见 [当前源码与验收](studio4-traceability.md)。
 

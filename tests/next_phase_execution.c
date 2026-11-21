@@ -316,10 +316,12 @@ int main(int argc, char **argv) {
     char *diagnostics = NULL;
     uint32_t length = 0;
     OK(ud_execution_diagnostics(execution, &diagnostics, &length));
-    printf("{\"result\":%d,\"state\":%d,\"input\":%llu,\"rejected\":%llu,\"committed\":%llu,"
+    ud_string id;
+    OK(ud_execution_id(execution, &id));
+    printf("{\"executionId\":\"%.*s\",\"result\":%d,\"state\":%d,\"input\":%llu,\"rejected\":%llu,\"committed\":%llu,"
            "\"acknowledged\":%llu,\"errorRows\":%llu,\"committedErrors\":%llu,"
            "\"acknowledgedErrors\":%llu,\"diagnostics\":%.*s",
-           result, m.state, (unsigned long long)m.input_rows, (unsigned long long)m.rejected_rows,
+           (int)id.length, id.data, result, m.state, (unsigned long long)m.input_rows, (unsigned long long)m.rejected_rows,
            (unsigned long long)m.committed_rows, (unsigned long long)m.acknowledged_rows,
            (unsigned long long)m.error_rows, (unsigned long long)m.committed_error_rows,
            (unsigned long long)m.acknowledged_error_rows, (int)length, diagnostics);

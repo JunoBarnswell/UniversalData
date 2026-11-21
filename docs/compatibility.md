@@ -2,10 +2,10 @@
 
 | 边界 | 当前契约 |
 |---|---|
-| SDK / ABI | metadata/product.json 生成 SDK 1.2.0、唯一 ABI/协议 6；拒绝 ABI 4 及更早的定义、插件和检查点 |
+| SDK / ABI | metadata/product.json 生成 SDK 12.0.0；唯一 ABI/Package/协议 15，Journal 格式 4；精确运行时收据尚未记录 |
 | Windows | x64 MSVC C17；本轮集中构建及 native/ASan/事务恢复/独立安装消费 |
 | Linux | 相同核心算子；POSIX 文件、线程、进程及动态加载实现；本轮按用户决定免测 |
-| C# | net8.0 薄 PInvoke；版本及 ABI 从产品模型生成 |
+| C# | .NET 10 (`net10.0`)；版本、目标框架和 ABI 从产品模型生成；`AddUniversalData(...)` 提供一个根容器 Singleton `IDataClient` |
 | Java | Java 17 薄 JNI；JAR/Maven 与 ud_java/ud_data 同版本 |
 | SQLite | 显式可选依赖；官方 pinned 3.49.1；事务及 receipt 纳入本轮验收 |
 | PostgreSQL | 当前连接契约及源码；本轮不作数据库验收 |

@@ -1,9 +1,9 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "11.0.0",
+  "sdkVersion": "12.0.0",
   "abi": 15,
   "scope": {
-    "name": "Studio 4 / SDK 11 candidate with one Native Package for each ETL path. Runtime evidence must match the candidate.",
+    "name": "Studio 4 / SDK 12 candidate with .NET 10 IoC and one Native Package for each ETL path. Runtime evidence must match the candidate.",
     "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
     "windows": "Required — complete driver build, native/language/install and platform acceptance",
     "extensions": "50 applicable audit items require current source and behavior evidence; ETL-039/040 NotApplicable"
@@ -16,23 +16,23 @@
   },
   "candidate": {
     "branch": "main",
-    "state": "SDK 11.0.0 source shipped to main. Linux execution evidence is scoped. The complete release remains open.",
-    "sourceCommit": "915d3087cae2115edd5cfebf847a93b6fa65cafc",
+    "state": "SDK 12.0.0 .NET 10/IoC source is on main. Exact runtime receipts are pending; the complete release remains open.",
+    "sourceCommit": "c5541fedeff57926b28d638a1052f0a3710ce4e6",
     "sourceFingerprint": null,
-    "mergeEvidence": "docs/acceptance/evidence/v11-linux.json",
+    "mergeEvidence": null,
     "pullRequest": null,
-    "sourceReviewScope": "C# DataJob, CLI and Designer use one Native Package/Binder. Linux candidate evidence includes scheduled incremental recovery, real CDC and XA, MinIO recovery, SQL and Trino net 70, and a ten-million-row SQLite stream."
+    "sourceReviewScope": "C# DataJob and the .NET 10 SDK use one Native Package/Binder. IoC registration, package metadata and release projections are updated; exact runtime receipts remain pending."
   },
   "remoteCI": {
     "state": "Observed",
-    "sourceCommit": "915d3087cae2115edd5cfebf847a93b6fa65cafc",
+    "sourceCommit": "c5541fedeff57926b28d638a1052f0a3710ce4e6",
     "sourceFingerprint": null,
     "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44905136912",
-    "status": "in_progress",
+    "status": "pending",
     "conclusion": null,
     "steps": null,
     "annotations": [],
-    "reason": "GitHub Actions status was recorded for this source. See the Linux evidence for the local PRODUCT run, verified behavior and open release gates.",
+    "reason": "Exact .NET 10/IoC runtime receipts are not recorded yet; release gates remain open and no release claim is made.",
     "previousRun": {
       "sourceCommit": "42563c174833f04f013b90733b32f3a753d1bfbb",
       "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44889441823",
@@ -43,8 +43,8 @@
   },
   "artifacts": null,
   "currentStreaming": {
-    "sourceCommit": "915d3087cae2115edd5cfebf847a93b6fa65cafc",
-    "verificationRule": "The linked SDK 11 Linux evidence identifies the cases actually run and the gates still open.",
+    "sourceCommit": "c5541fedeff57926b28d638a1052f0a3710ce4e6",
+    "verificationRule": "The SDK 12 .NET 10/IoC implementation remains pending exact runtime receipts; missing environments are Blocked.",
     "items": [
       {
         "id": "S07",

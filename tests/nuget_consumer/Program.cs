@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using SqlSugar;
 using UniversalData;
 
@@ -52,16 +54,23 @@ try
         throw new InvalidOperationException("NuGet must restore the official SqlSugar assembly");
 
     var server = Serve(listener, token);
-    var builder = DataClient.CreateBuilder(policy, "local")
-        .AddHttp("sales", new Uri(origin))
-        .AddSqlite("finance", "Data Source=" + target);
-    foreach (var broker in activeBrokerKinds.Keys.Order(StringComparer.Ordinal))
+    int created = 0;
+    var services = new ServiceCollection().AddUniversalData(policy, "local", builder =>
     {
-        var definition = new DataSourceDefinition(broker, activeBrokerKinds[broker], "",
-            resource: "mq-fixture-resource", credentialReference: broker);
-        builder.AddSource(definition);
-    }
-    await using var data = builder.Build();
+        Interlocked.Increment(ref created);
+        builder.AddHttp("sales", new Uri(origin))
+            .AddSqlite("finance", "Data Source=" + target)
+            .ConfigureWorkers(options => options.MaxConcurrentSessions(2));
+        foreach (var (broker, kind) in activeBrokerKinds)
+            builder.AddSource(new(broker, kind, "", resource: "mq-fixture-resource", credentialReference: broker));
+    });
+    await using var provider = services.BuildServiceProvider();
+    if (created != 0) throw new InvalidOperationException("Client construction must wait for resolution");
+    var clients = await Task.WhenAll(Enumerable.Range(0, 8)
+        .Select(_ => Task.Run(provider.GetRequiredService<IDataClient>, token)));
+    var data = clients[0];
+    if (created != 1 || clients.Any(client => !ReferenceEquals(client, data)))
+        throw new InvalidOperationException("Concurrent resolutions did not share one client");
 
     await data.RunAsync(DataJob.Define("create-finance").ExecuteSql("finance",
         "CREATE TABLE paid_orders (id INTEGER NOT NULL PRIMARY KEY, label TEXT, amount TEXT NOT NULL)"), token);
@@ -119,6 +128,37 @@ try
             throw new InvalidOperationException("An independent database connection observed a different result");
     }
 
+    var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var hold = Hold(listener, cancelled, release.Task, token);
+    var request = DataJob.Define("cancel-request").FromHttp<Order>("sales", "/hold").Return();
+    using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+    var pending = data.RunAsync(request, requestCancellation.Token).ToListAsync(requestCancellation.Token).AsTask();
+    var query = DataJob.Define("read-page").QueryTable<PaidOrder>("finance", "paid_orders")
+        .OrderByDescending(row => row.Id).Skip(1).Take(2)
+        .Select(row => new ProbeRow { Value = row.Id }).Return();
+    List<ProbeRow> page;
+    try
+    {
+        await cancelled.Task.WaitAsync(token);
+        var activePage = data.RunAsync(query, token).ToListAsync(token).AsTask();
+        requestCancellation.Cancel();
+        try
+        {
+            await pending;
+            throw new InvalidOperationException("The cancelled request returned rows");
+        }
+        catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested) { }
+        page = await activePage;
+    }
+    finally
+    {
+        release.TrySetResult();
+        await hold;
+    }
+    if (!page.Select(row => row.Value).SequenceEqual(new long[] { 34, 33 }))
+        throw new InvalidOperationException("A separate request changed after cancellation");
+
     var verified = new HashSet<string>(StringComparer.Ordinal) { "sqlite" };
     if (sqlProbes.Count != 0)
     {
@@ -143,8 +183,12 @@ try
         consumedCommitted = pair.Value.ConsumedCommitted,
         consumedAcknowledged = pair.Value.ConsumedAcknowledged
     }, StringComparer.Ordinal);
+    using var worker = await CompletedWorker(data, query, token);
+    await provider.DisposeAsync();
+    await worker.WaitForExitAsync(token);
     Console.WriteLine(JsonSerializer.Serialize(new { version = ProductInfo.Sdk, framework = Environment.Version.ToString(),
-        rid, http = 200, sqliteRows = verifiedRows, drivers = verified.Order().ToArray(),
+        rid, http = 200, sqliteRows = verifiedRows, pageRows = page.Count, singleton = true,
+        isolatedCancellation = true, workerExited = worker.HasExited, drivers = verified.Order().ToArray(),
         brokers = brokers.Keys.Order().ToArray(), mq = brokerFacts }));
 }
 finally { Directory.Delete(root, true); }
@@ -152,7 +196,7 @@ finally { Directory.Delete(root, true); }
 static T Require<T>(Result<T> result) => result.IsSuccess ? result.Value! :
     throw new InvalidOperationException($"{result.Code} ({result.Error?.Cause})");
 
-static async Task VerifySql(DataClient data, Dictionary<string, string> probes, string target,
+static async Task VerifySql(IDataClient data, Dictionary<string, string> probes, string target,
     HashSet<string> verified, CancellationToken token)
 {
     var schema = JsonSerializer.SerializeToElement(new
@@ -271,4 +315,24 @@ static async Task Serve(TcpListener listener, CancellationToken cancellation)
     await stream.WriteAsync(Encoding.ASCII.GetBytes(
         $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"), cancellation);
     await stream.WriteAsync(body, cancellation);
+}
+
+static async Task Hold(TcpListener listener, TaskCompletionSource started, Task release,
+    CancellationToken cancellation)
+{
+    using var client = await listener.AcceptTcpClientAsync(cancellation);
+    using var reader = new StreamReader(client.GetStream());
+    if (await reader.ReadLineAsync(cancellation) != "GET /hold HTTP/1.1")
+        throw new InvalidOperationException("The held request did not use the installed HTTP driver");
+    while (await reader.ReadLineAsync(cancellation) is { Length: > 0 }) { }
+    started.SetResult();
+    await release.WaitAsync(cancellation);
+}
+
+static async Task<Process> CompletedWorker(IDataClient data, DataJobQuery<object, ProbeRow> query,
+    CancellationToken cancellation)
+{
+    await using var run = await data.StartAsync(query, cancellation);
+    await foreach (var row in run.ReadRowsAsync<ProbeRow>(cancellation)) { }
+    return Process.GetProcessById(run.WorkerProcessId);
 }

@@ -23,7 +23,7 @@ ICEBERG_RUNTIMES = {
 }
 
 
-def nuspec(path, identity, version, description, files, dependencies=()):
+def nuspec(path, identity, version, description, files, dependencies=(), *, target_framework):
     package = ET.Element("package")
     metadata = ET.SubElement(package, "metadata")
     for name, value in (("id", identity), ("version", version), ("authors", "UniversalData"),
@@ -31,7 +31,7 @@ def nuspec(path, identity, version, description, files, dependencies=()):
         ET.SubElement(metadata, name).text = value
     ET.SubElement(metadata, "license", type="expression").text = "MIT"
     if dependencies:
-        group = ET.SubElement(ET.SubElement(metadata, "dependencies"), "group", targetFramework="net8.0")
+        group = ET.SubElement(ET.SubElement(metadata, "dependencies"), "group", targetFramework=target_framework)
         for name, dependency_version in dependencies:
             ET.SubElement(group, "dependency", id=name, version=f"[{dependency_version}]")
     mapping = ET.SubElement(package, "files")
@@ -69,10 +69,12 @@ def copy_asset(source, destination):
 def assemble(args):
     product = json.loads((ROOT / "metadata/product.json").read_text())["product"]
     version = product["sdkVersion"]
+    target_framework = product["dotnetTargetFramework"]
     identity = "UniversalData.Runtime." + args.rid
     extension = ".dll" if args.rid == "win-x64" else ".so"
     library = "ud_data.dll" if args.rid == "win-x64" else "libud_data.so"
     args.output.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["dotnet", "build", str(SDK), "-c", "Release"], cwd=ROOT, check=True)
     with tempfile.TemporaryDirectory(prefix="ud-sdk-pack-") as folder:
         root = Path(folder)
         worker = root / "worker"
@@ -144,10 +146,10 @@ def assemble(args):
             files.extend(license_files)
         elif args.complete:
             raise ValueError("Complete runtime packages require native dependency notices")
-        nuspec(spec, identity, version, "Self-contained UniversalData Worker and native runtime", files)
+        nuspec(spec, identity, version, "Self-contained UniversalData Worker and native runtime", files,
+               target_framework=target_framework)
         pack(spec, args.output, root)
 
-        subprocess.run(["dotnet", "build", str(SDK), "-c", "Release"], cwd=ROOT, check=True)
         if args.single_rid_feed:
             sdk_spec = ET.parse(SDK.with_suffix(".nuspec"))
             sdk_spec.find("metadata/version").text = version

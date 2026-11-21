@@ -1,6 +1,6 @@
 # UniversalData
 
-当前候选版本为 **SDK 11.0.0 / ABI 15**。C# `DataJob`、CLI 和 Designer 共用由 C17 内核执行的 Native Package。Native Catalog 持有发布、调度、运行租约和跨次增量位点。 [C# API](docs/api.md) · [升级说明](docs/breaking-changes.md)
+当前实现版本为 **SDK 12.0.0 / .NET 10 / ABI 15**。C# `DataJob`、CLI 和 Designer 共用由 C17 内核执行的 Native Package；应用可通过 `AddUniversalData(...)` 将一个 Singleton `IDataClient` 注入宿主。精确运行时收据尚未记录，因此本版本不宣称已完成发布验收。 [C# API](docs/api.md) · [升级说明](docs/breaking-changes.md)
 
 Studio 4 引入事件时间与 Tumbling/Sliding/Session 聚合、原生状态快照与 Spill、持续源空闲停放、优雅停止、Catalog 事实订阅，以及多标签工作台、命令面板和主题。契约及该版本的验收记录见 [Studio 4 PRD](docs/product/studio4-prd.md)、[流批统一设计](docs/architecture/stream-batch-unification.md) 和 [Studio 4 追踪表](docs/acceptance/studio4-traceability.md)。
 
@@ -26,13 +26,13 @@ SDK 仅保留 `ud_package` / `ud_execution` 执行链路。旧 CSV Job、DAG、R
 
 ### Visual Studio 2026
 
-安装 VS2026 的“使用 C++ 的桌面开发”（含 MSVC x64、Windows SDK、“适用于 Windows 的 C++ CMake 工具”）和“.NET 桌面开发”组件，并安装 .NET 8 SDK/目标包。VS2026 生成器需要 CMake 4.2+；构建入口优先使用当前 VS 实例自带的 CMake，没有内置 CMake 时使用 PATH 中的 CMake。
+安装 VS2026 的“使用 C++ 的桌面开发”（含 MSVC x64、Windows SDK、“适用于 Windows 的 C++ CMake 工具”）和“.NET 桌面开发”组件，并安装 .NET 10 SDK/目标包。VS2026 生成器需要 CMake 4.2+；构建入口优先使用当前 VS 实例自带的 CMake，没有内置 CMake 时使用 PATH 中的 CMake。
 
 双击根目录的 `UniversalData.sln`，选择 `Debug | x64` 或 `Release | x64`，执行“生成解决方案”（Ctrl+Shift+B）。解决方案包含 `UniversalData.Native`、.NET SDK、`Consumer` 和 `DataConsumer`；原生项目先构建，再编译托管项目，并将对应配置的 `ud_data.dll` 复制到托管输出目录。
 
 原生项目通过 Makefile 工程调用现有 CMake，支持源码浏览、IntelliSense、生成、重新生成与清理。CORE 明确构建原生 SDK 子集；产品宿主通过 `UD_BUILD_HOSTS=ON` 构建，要求 .NET SDK 10。PRODUCT 还要求全部驱动、Web 和语言依赖。JNI、SQLite/PostgreSQL、HTTP、测试和 benchmark 使用其他预设或显式配置启用。
 
-原生产物位于 `build/vs2026/<Debug|Release>/ud_data.dll`，CLI/Worker 位于 `build/vs2026/hosts/product/<cli|worker>/`；托管 SDK 和示例位于各项目的 `bin/x64/<Debug|Release>/net8.0/`。原生构建完整日志保存在 `%TEMP%/UniversalData-vs2026/`，失败时输出真实退出码及错误摘要。默认原生启动项目为 CLI，调试前在项目属性中填写执行参数。
+原生产物位于 `build/vs2026/<Debug|Release>/ud_data.dll`，CLI/Worker 位于 `build/vs2026/hosts/product/<cli|worker>/`；托管 SDK 和示例位于各项目的 `bin/x64/<Debug|Release>/net10.0/`。原生构建完整日志保存在 `%TEMP%/UniversalData-vs2026/`，失败时输出真实退出码及错误摘要。默认原生启动项目为 CLI，调试前在项目属性中填写执行参数。
 
 在 VS2026 Developer PowerShell 中也可编译完整解决方案：
 
@@ -47,7 +47,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-vs2026.ps1
 
 ### 其他构建方式
 
-通用预设需要 CMake 3.25+、C17 编译器；Windows 预设需要 CMake 4.2+ 和 VS2026，Ninja 预设需要 Ninja。现有 `windows`/`linux` 预设启用 JNI，需要 JDK 17；.NET 绑定需要 .NET 8 SDK，Java 包需要 Maven。
+通用预设需要 CMake 3.25+、C17 编译器；Windows 预设需要 CMake 4.2+ 和 VS2026，Ninja 预设需要 Ninja。现有 `windows`/`linux` 预设启用 JNI，需要 JDK 17；.NET 绑定需要 .NET 10 SDK，Java 包需要 Maven。
 
 ```sh
 cmake --preset windows
@@ -76,8 +76,8 @@ CLI：`ud_cli execute host-policy.json package.json '{}'`。SDK 未提供的新�
 完成 Release/JNI 构建后，打包脚本直接安装已构建的二进制，生成 native NuGet、JAR/POM、SHA256 清单及 ZIP：
 
 ```sh
-python packaging/package-linux.py --build build/four-engines-linux --output artifacts/2.0.0/linux-x64
-python tests/installed_sdk.py --bundle artifacts/2.0.0/UniversalData-2.0.0-linux-x64.zip --work /tmp/ud-sdk-consumer-fresh --evidence artifacts/linux-consumers.json
+python packaging/package-linux.py --build build/four-engines-linux --output artifacts/12.0.0/linux-x64
+python tests/installed_sdk.py --bundle artifacts/12.0.0/UniversalData-12.0.0-linux-x64.zip --work /tmp/ud-sdk-consumer-fresh --evidence artifacts/linux-consumers.json
 python benchmarks/four_engines.py --cli build/four-engines-linux/hosts/ud_cli --output artifacts/linux-benchmark.json
 ```
 
@@ -91,14 +91,14 @@ Windows 构建自动将 `ud_data.dll` 的依赖放在原生库和各宿主旁。
 ./packaging/package.ps1 -BuildDirectory build/windows -NativeRuntimeLicenses 'D:/SDK/native-licenses'
 ctest --test-dir build/windows -C Release --parallel 4 --output-on-failure
 $consumerWork = Join-Path $env:TEMP ('ud-sdk-consumer-' + [guid]::NewGuid().ToString('N'))
-python tests/installed_sdk.py --bundle artifacts/UniversalData-10.0.0-win-x64.zip --companion-packages <Linux运行时包目录> --work $consumerWork --evidence artifacts/consumers.json
+python tests/installed_sdk.py --bundle artifacts/UniversalData-12.0.0-win-x64.zip --companion-packages <Linux运行时包目录> --work $consumerWork --evidence artifacts/consumers.json
 ```
 
-脚本重新构建 Release，再生成 `artifacts/10.0.0/win-x64/sdk`、带原生依赖的 NuGet、Java JAR/POM、逐文件 SHA-256 清单和 ZIP。独立消费测试仅使用解压后的产物，C# 进程无需将 SDK 加入 `PATH`。`-NativeRuntimeLicenses` 随包收录本次所用供应商运行库的许可证。
+脚本重新构建 Release，再生成 `artifacts/12.0.0/win-x64/sdk`、带原生依赖的 NuGet、Java JAR/POM、逐文件 SHA-256 清单和 ZIP。独立消费测试仅使用解压后的产物，C# 进程无需将 SDK 加入 `PATH`。`-NativeRuntimeLicenses` 随包收录本次所用供应商运行库的许可证。
 
-将 Windows 和 Linux 的运行时包、同版本 `UniversalData` 和打包时解析的 NuGet 依赖放入同一个本地源。安装项目引用 `UniversalData`，通过 `dotnet restore --source <本地源> --use-lock-file` 在本地解析依赖并记录锁文件。构建与发布会复制当前平台的自包含 Worker。使用 `python tests/installed_nuget.py --source <本地源> --complete --evidence <验证报告>` 在独立 .NET 8 项目中验收六库与 HTTP。两个系统的安装报告记录依赖锁和包哈希。发行工作流核对同一提交的报告后生成审核产物。 [NuGet 发行工作流](.github/workflows/publish-nuget.yml)
+将 Windows 和 Linux 的运行时包、同版本 `UniversalData` 和打包时解析的 NuGet 依赖放入同一个本地源。安装项目引用 `UniversalData`，通过 `dotnet restore --source <本地源> --use-lock-file` 在本地解析依赖并记录锁文件。构建与发布会复制当前平台的自包含 Worker。使用 `python tests/installed_nuget.py --source <本地源> --complete --evidence <验证报告>` 在独立 .NET 10 项目中验收六库与 HTTP。两个系统的安装报告记录依赖锁和包哈希。发行工作流核对同一提交的报告后生成审核产物。 [NuGet 发行工作流](.github/workflows/publish-nuget.yml)
 
-Windows 原生运行需要 x64 Microsoft Visual C++ Redistributable。C# SDK 面向 .NET 8 或兼容运行时，产品宿主需要 ASP.NET Core Runtime 10，Java 需要 JDK 17。SQL Server 由安装程序注册与构建时 SDK 一致的 x64 Microsoft ODBC Driver。部署 Oracle 和 MySQL 连接器时，分别将 Oracle Instant Client Basic 和 MySQL C 客户端的匹配运行库放在连接器 DLL 旁。每个 Windows 进程按应用或连接器所处目录加载依赖。
+Windows 原生运行需要 x64 Microsoft Visual C++ Redistributable。C# SDK 面向 .NET 10，产品宿主需要 ASP.NET Core Runtime 10，Java 需要 JDK 17。SQL Server 由安装程序注册与构建时 SDK 一致的 x64 Microsoft ODBC Driver。部署 Oracle 和 MySQL 连接器时，分别将 Oracle Instant Client Basic 和 MySQL C 客户端的匹配运行库放在连接器 DLL 旁。每个 Windows 进程按应用或连接器所处目录加载依赖。
 
 当前权威 [Phase 0–7 产品和技术设计](docs/architecture/phase-0-7-design.md)、[核心与扩展清单](docs/product/component-catalog.md)。
 

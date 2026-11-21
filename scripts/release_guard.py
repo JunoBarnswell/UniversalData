@@ -145,12 +145,14 @@ def assemble_nuget(linux, windows, destination):
 
 
 def verify_nuget_installations(directory, commit, archives, version):
+    target_framework = read_model()["product"]["dotnetTargetFramework"]
+    runtime_major = target_framework.removeprefix("net").split(".", 1)[0] + "."
     drivers = set(RUNTIME_DRIVERS)
     for rid in ("linux-x64", "win-x64"):
         evidence = json.loads((directory / f"installed-{rid}.json").read_text())
         lock_hash = evidence.get("dependencyLockSha256", "")
         if (evidence["rid"] != rid or evidence["sourceCommit"] != commit or evidence["version"] != version
-                or not evidence["framework"].startswith("8.") or evidence["http"] != 200
+                or not evidence["framework"].startswith(runtime_major) or evidence["http"] != 200
                 or evidence["sqliteRows"] != 35 or set(evidence["drivers"]) != drivers
                 or len(lock_hash) != 64 or any(character not in "0123456789abcdef" for character in lock_hash)
                 or sorted(evidence["archives"], key=lambda item: item["name"]) != archives):
@@ -212,7 +214,8 @@ def check_nuget(directory):
                     f"UniversalData.Runtime.{rid}": f"[{expected}]" for rid in ("linux-x64", "win-x64")}
                 expected_dependencies.update({package: f"[{locked}]"
                                               for package, locked in product["dotnetPackages"].items()})
-                if "lib/net8.0/UniversalData.dll" not in files or dependencies != expected_dependencies:
+                target_framework = product["dotnetTargetFramework"]
+                if f"lib/{target_framework}/UniversalData.dll" not in files or dependencies != expected_dependencies:
                     raise ValueError("The SDK assembly or exact dependencies differ")
 
 

@@ -32,7 +32,7 @@ struct ud_operator {
     ud_context *ctx;
     ud_operator_options options;
     ud_batch *inputs[2], *schema;
-    uint32_t *keys, ports, ended, run_count;
+    uint32_t *keys, ports, ended, run_count, key_directions;
     uint8_t port_ended[2];
     run *runs[2], *tail[2];
     ud_value *run_bounds;
@@ -128,16 +128,9 @@ static ud_status advance(ud_operator *o, cursor *c) {
     return UD_OK;
 }
 static int compare(ud_operator *o, const cursor *a, const cursor *b) {
-    for (uint32_t i = 0; i < o->options.key_count; i++) {
-        ud_value x, y;
-        ud_batch_get(a->batch, a->row, o->keys[i], &x);
-        ud_batch_get(b->batch, b->row, o->keys[i], &y);
-        const ud_field *field = &o->inputs[0]->column[o->keys[i]].field;
-        int order = ud_field_value_compare(field, &x, field, &y);
-        if (order)
-            return o->options.descending ? -order : order;
-    }
-    return o->stage_ordered ? ud_compute_stage_order(a->batch, a->row, b->batch, b->row) : 0;
+    return ud_compute_compare_keys(a->batch, a->row, b->batch, b->row, o->keys,
+                                   o->options.key_count, o->options.descending, o->key_directions,
+                                   o->stage_ordered);
 }
 static int heap_less(ud_operator *o, cursor *streams, uint32_t a, uint32_t b) {
     int order = compare(o, streams + a, streams + b);
@@ -267,7 +260,8 @@ static ud_status prepare_merge(ud_operator *o) {
     return UD_OK;
 }
 static ud_status create_bound(ud_context *ctx, const ud_operator_options *options,
-                              const ud_batch *const *inputs, ud_operator **out) {
+                              const ud_batch *const *inputs, uint32_t key_directions,
+                              ud_operator **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
@@ -285,6 +279,7 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
         return UD_RESOURCE;
     o->ctx = ctx;
     o->options = *options;
+    o->key_directions = key_directions;
     ud_status captured = options->kind >= UD_OPERATOR_EVENT_WINDOW
                            ? UD_OK
                            : ud_replay_create(ctx, options, inputs, &o->replay);
@@ -483,30 +478,14 @@ static ud_status partition_quantum(void *user, uint32_t index) {
         if (!status)
             status = ud_batch_seal(work->results[index]);
         ud_accumulator_destroy(partial);
+    } else if (!status && (o->stage_ordered || o->options.key_count)) {
+        status = ud_compute_sort_keys(o->ctx, piece, o->keys, o->options.key_count,
+                                     o->options.descending, o->key_directions, o->stage_ordered,
+                                     work->results + index);
     } else if (!status) {
-        ud_batch *sorted = NULL;
-        const ud_batch *current = piece;
-        if (o->stage_ordered) {
-            status = ud_compute_sort_stage_order(o->ctx, piece, &sorted);
-            current = sorted;
-        }
-        for (uint32_t i = o->options.key_count; !status && i; i--) {
-            ud_batch *next = NULL;
-            status = ud_compute_sort(o->ctx, current, o->keys[i - 1], o->options.descending, &next);
-            ud_batch_destroy(sorted);
-            sorted = next;
-            current = sorted;
-        }
-        if (!status && sorted)
-            work->results[index] = sorted;
-        else {
-            ud_batch_destroy(sorted);
-            if (!status) {
-                status = ud_batch_retain(piece);
-                if (!status)
-                    work->results[index] = piece;
-            }
-        }
+        status = ud_batch_retain(piece);
+        if (!status)
+            work->results[index] = piece;
     }
     ud_batch_destroy(piece);
     return status;
@@ -518,7 +497,7 @@ static int compare_bound(ud_operator *o, const ud_batch *batch, uint32_t row, co
         const ud_field *field = &batch->column[o->keys[i]].field;
         int order = ud_field_value_compare(field, &value, field, bound + i);
         if (order)
-            return o->options.descending ? -order : order;
+            return ud_key_descending(o->options.descending, o->key_directions, i) ? -order : order;
     }
     return 0;
 }
@@ -919,9 +898,11 @@ ud_status ud_operator_order(const ud_operator *o, ud_sort_contract *out) {
             return UD_RESOURCE;
         out->count = o->options.key_count;
         out->stable = 1;
-        for (uint32_t k = 0; k < out->count; k++)
+        for (uint32_t k = 0; k < out->count; k++) {
+            int descending = ud_key_descending(o->options.descending, o->key_directions, k);
             out->keys[k] = (ud_sort_key){o->schema->column[o->keys[k]].field.identity,
-                                         o->options.descending, !o->options.descending};
+                                         descending, !descending};
+        }
     }
     return UD_OK;
 }
@@ -1065,13 +1046,13 @@ ud_status ud_operator_explain(const ud_operator *o, char **out, uint32_t *length
 
 ud_status ud_operator_bind_options(ud_context *, const ud_operator_options *, const ud_batch *,
                                    ud_operator_options *, ud_json **, char **, uint32_t[16],
-                                   ud_plan **);
+                                   uint32_t *, ud_plan **);
 ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options,
                              const ud_batch *const *inputs, ud_operator **out) {
     if (!options || !options->configuration.length ||
         (options->kind != UD_OPERATOR_SORT && options->kind != UD_OPERATOR_WINDOW &&
          options->kind != UD_OPERATOR_AGGREGATE && options->kind != UD_OPERATOR_EVENT_WINDOW))
-        return create_bound(ctx, options, inputs, out);
+        return create_bound(ctx, options, inputs, 0, out);
     if (!ctx || !inputs || !inputs[0] || !out || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
@@ -1079,12 +1060,12 @@ ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options
     ud_operator_options bound;
     ud_json *document = NULL;
     char *configuration = NULL;
-    uint32_t keys[16];
+    uint32_t keys[16], directions;
     ud_plan *plan = NULL;
     ud_status status = ud_operator_bind_options(ctx, options, inputs[0], &bound, &document,
-                                                &configuration, keys, &plan);
+                                                &configuration, keys, &directions, &plan);
     if (!status)
-        status = create_bound(ctx, &bound, inputs, out);
+        status = create_bound(ctx, &bound, inputs, directions, out);
     ud_plan_destroy(plan);
     ud_free(configuration);
     ud_json_destroy(document);

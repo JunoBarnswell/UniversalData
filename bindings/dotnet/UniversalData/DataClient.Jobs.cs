@@ -105,14 +105,16 @@ public sealed partial class DataClient
         if (Configuration is null) return explicitValues;
         var configured = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(Configuration.Parameters(job.Id))!;
         using var values = JsonDocument.Parse(explicitValues);
+        var overrides = new Dictionary<string, JsonProperty>(StringComparer.OrdinalIgnoreCase);
         foreach (var value in values.RootElement.EnumerateObject())
-        {
-            foreach (string key in configured.Keys.Where(key =>
-                key.Equals(value.Name, StringComparison.OrdinalIgnoreCase)).ToArray())
-                configured.Remove(key);
-            configured[value.Name] = value.Value.Clone();
-        }
-        return JsonSerializer.Serialize(configured, WorkerProtocol.Json);
+            overrides[value.Name] = value;
+        if (overrides.Count == 0) return JsonSerializer.Serialize(configured, WorkerProtocol.Json);
+        var parameters = new Dictionary<string, JsonElement>(configured.Count + overrides.Count, StringComparer.Ordinal);
+        foreach (var (name, value) in configured)
+            if (!overrides.ContainsKey(name)) parameters.Add(name, value);
+        foreach (var value in overrides.Values)
+            parameters.Add(value.Name, value.Value);
+        return JsonSerializer.Serialize(parameters, WorkerProtocol.Json);
     }
 
     private static SdkSourceBinding[] BindJobSources(JsonElement definition,

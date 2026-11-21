@@ -38,6 +38,8 @@ internal static class NativeOrmCase
                 try
                 {
                     await Exercise(client, source, table, deadline.Token);
+                    await LinqTableCase.RunAsync(client, source,
+                        table + (kind == DataSourceKind.Oracle ? "P" : "p"), deadline.Token);
                     Console.WriteLine($"{kind} Native SQL job/query, transaction, and independent oracle passed");
                 }
                 catch (Exception error) when (!deadline.IsCancellationRequested)

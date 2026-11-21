@@ -9,19 +9,21 @@
     <readme>README.md</readme>
     <repository type="git" url="https://github.com/JunoBarnswell/UniversalData.git" />
     <dependencies>
-      <group targetFramework="net8.0">
+      <group targetFramework="net10.0">
         <dependency id="SqlSugarCore" version="[$SqlSugarCore$]" />
         <dependency id="MySqlConnector" version="[$MySqlConnector$]" />
         <dependency id="SQLitePCLRaw.lib.e_sqlite3" version="[$SQLitePCLRawlibe_sqlite3$]" />
         <dependency id="System.Security.Cryptography.Pkcs" version="[$SystemSecurityCryptographyPkcs$]" />
         <dependency id="YamlDotNet" version="[$YamlDotNet$]" />
+        <dependency id="Microsoft.Extensions.DependencyInjection.Abstractions" version="[$MicrosoftExtensionsDependencyInjectionAbstractions$]" />
+        <dependency id="Microsoft.Extensions.Configuration.Abstractions" version="[$MicrosoftExtensionsConfigurationAbstractions$]" />
         <dependency id="UniversalData.Runtime.win-x64" version="[$version$]" />
         <dependency id="UniversalData.Runtime.linux-x64" version="[$version$]" />
       </group>
     </dependencies>
   </metadata>
   <files>
-    <file src="bin/Release/net8.0/UniversalData.dll" target="lib/net8.0" />
+    <file src="bin/Release/net10.0/UniversalData.dll" target="lib/net10.0" />
     <file src="../../../README.md" target="README.md" />
   </files>
 </package>

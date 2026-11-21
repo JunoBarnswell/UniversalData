@@ -16,6 +16,8 @@ import urllib.request
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+PRODUCT = json.loads((ROOT / "metadata/product.json").read_text(encoding="utf-8"))["product"]
+TARGET_FRAMEWORK = PRODUCT["dotnetTargetFramework"]
 parser = argparse.ArgumentParser()
 parser.add_argument("--bundle", required=True, type=pathlib.Path)
 parser.add_argument("--companion-packages", required=True, type=pathlib.Path,
@@ -168,7 +170,7 @@ for name, source, assembly in [("package", "examples/dotnet", "Consumer"),
         shutil.copyfile(source_file, client / source_file.name)
     project = client / (assembly + ".csproj")
     project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType>'
-                       '<TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>'
+                       '<TargetFramework>' + TARGET_FRAMEWORK + '</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>'
                        '</PropertyGroup><ItemGroup><PackageReference Include="UniversalData" Version="[' + version +
                        ']" /></ItemGroup></Project>', encoding="utf-8")
     run("nuget-restore-" + name, [arguments.dotnet, "restore", project, "--source", packages,
@@ -177,7 +179,7 @@ for name, source, assembly in [("package", "examples/dotnet", "Consumer"),
                                 "-p:TreatWarningsAsErrors=true", "--nologo", "--verbosity:minimal"])
     run("nuget-build-" + name, [arguments.dotnet, "build", project, "--configuration", "Release",
                               "--no-restore", "--nologo", "--verbosity:minimal"])
-    output = client / "bin/Release/net8.0"
+    output = client / "bin/Release" / TARGET_FRAMEWORK
     assert digest(output / runtime_path) == digest(library), "Consumer did not receive the packaged native asset."
     if os.name != 'nt':
         # These are the already copied and verified NuGet assets, not SDK

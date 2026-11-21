@@ -44,6 +44,14 @@ public sealed class DataJob<TInput> : DataJob
         return new(this, flow, name);
     }
 
+    /// <summary>Read a bounded page from one physical SQL table.</summary>
+    public DataJobTableQuery<TInput, TRow> QueryTable<TRow>(string source, string? table = null, string? step = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(source);
+        if (table is not null) ArgumentException.ThrowIfNullOrWhiteSpace(table);
+        return new(this, new(source, table ?? EntityMapping.For<TRow>().TableName, step));
+    }
+
     /// <summary>Load a current dimension snapshot before opening its consumer flow.</summary>
     public DataJob<TInput> BuildCurrentCache<TDimension>(string cache, string source,
         Expression<Func<TDimension, object?>> key, string? table = null, string? step = null)

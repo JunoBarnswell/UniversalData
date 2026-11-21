@@ -272,8 +272,37 @@ internal sealed class SdkEtlSession(HostPolicy policy,
         }
         catch (UniversalDataException error)
         {
-            return new(error.Code, execution.Metrics, error.Detail);
+            return new(error.Code, execution.Metrics, BindingError(execution, error));
         }
+    }
+
+    private static OperationError? BindingError(Execution execution, UniversalDataException error)
+    {
+        if (error.Detail is not { } detail ||
+            error.Code is not (StatusCode.Invalid or StatusCode.Schema or StatusCode.Unsupported or
+                StatusCode.Incompatible or StatusCode.Overflow))
+            return error.Detail;
+
+        try
+        {
+            using var diagnostics = JsonDocument.Parse(execution.Diagnostics());
+            var document = diagnostics.RootElement;
+            string? job = document.GetProperty("packageId").GetString();
+            if (job is null || !HostIdentity.ValidId(job)) return detail;
+            foreach (var pipeline in document.GetProperty("pipelines").EnumerateArray())
+                foreach (var tree in pipeline.GetProperty("trees").EnumerateArray())
+                    foreach (var node in tree.GetProperty("nodes").EnumerateArray())
+                    {
+                        if (node.GetProperty("result").GetInt32() != error.Status) continue;
+                        if (node.GetProperty("id").GetString() is { } step && HostIdentity.ValidId(step))
+                            return detail with { Message = $"Job '{job}', step '{step}': {detail.Message}" };
+                    }
+        }
+        catch (UniversalDataException)
+        {
+            // The original status remains authoritative if diagnostic collection hits its quota.
+        }
+        return detail;
     }
 
     private static async Task<Terminal> ObserveCompletionAsync(Execution execution, Catalog catalog, Task finished)

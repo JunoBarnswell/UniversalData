@@ -1,0 +1,3 @@
+# The fixture scripts create private policies, connection strings, SQLite data, and Compose state.
+.local/
+*.connection

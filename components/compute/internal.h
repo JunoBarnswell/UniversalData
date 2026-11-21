@@ -36,5 +36,11 @@ ud_status ud_plan_retain(ud_plan *);
 ud_status ud_partition_hash_row(const ud_batch *, uint32_t row, const uint32_t *keys,
                                 uint32_t key_count, uint32_t partitions, uint32_t *partition);
 int ud_compute_stage_order(const ud_batch *, uint32_t, const ud_batch *, uint32_t);
-ud_status ud_compute_sort_stage_order(ud_context *, const ud_batch *, ud_batch **);
+static inline int ud_key_descending(int descending, uint32_t directions, uint32_t index) {
+    return descending || (index < 16 && (directions & (UINT32_C(1) << index)) != 0);
+}
+int ud_compute_compare_keys(const ud_batch *, uint32_t, const ud_batch *, uint32_t, const uint32_t *,
+                            uint32_t, int, uint32_t, int);
+ud_status ud_compute_sort_keys(ud_context *, const ud_batch *, const uint32_t *, uint32_t,
+                               int, uint32_t, int, ud_batch **);
 #endif

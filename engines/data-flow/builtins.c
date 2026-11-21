@@ -471,7 +471,16 @@ static const char *configuration_schema(int kind) {
                "\"partitionEnd\":{\"type\":\"integer\",\"minimum\":0},\"incremental\":{\"type\":"
                "\"object\"},\"schemaPolicy\":{\"type\":\"object\"},\"readMode\":{\"type\":\"string\",\"enum\":[\"snapshot\",\"stream\"],\"default\":\"snapshot\"},\"table\":{\"type\":\"string\","
                "\"minLength\":1},\"sql\":{\"type\":\"string\",\"minLength\":1},\"parameters\":{"
-               "\"type\":\"object\"},\"ordering\":{\"type\":\"object\"},\"where\":{},"
+               "\"type\":\"object\"},\"ordering\":{\"type\":\"object\"},\"where\":{},\"tableQuery\":{\"type\":\"object\","
+               "\"properties\":{\"where\":{\"type\":\"object\"},\"projection\":{\"type\":\"array\",\"minItems\":1,"
+               "\"items\":{\"type\":\"object\",\"properties\":{\"column\":{\"type\":\"string\",\"minLength\":1},"
+               "\"name\":{\"type\":\"string\",\"minLength\":1}},\"required\":[\"column\",\"name\"],"
+               "\"additionalProperties\":false}},\"order\":{\"type\":\"array\",\"items\":{\"type\":\"object\","
+               "\"properties\":{\"column\":{\"type\":\"string\",\"minLength\":1},\"descending\":{\"type\":\"boolean\"}},"
+               "\"required\":[\"column\",\"descending\"],\"additionalProperties\":false}},\"ranges\":{\"type\":\"array\","
+               "\"minItems\":1,\"items\":{\"type\":\"object\",\"properties\":{\"op\":{\"type\":\"string\",\"enum\":["
+               "\"skip\",\"take\"]},\"count\":{\"type\":\"integer\"}},\"required\":[\"op\",\"count\"],"
+               "\"additionalProperties\":false}}},\"required\":[\"projection\",\"ranges\"],\"additionalProperties\":false},"
                "\"errorPolicy\":{\"enum\":[\"fail\",\"redirect\",\"ignore\"]},\"includeInput\":{"
                "\"type\":\"boolean\"}},\"required\":"
                "[\"connection\",\"schema\"],\"anyOf\":[{\"required\":[\"sql\"]},{\"required\":["
@@ -591,6 +600,7 @@ ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_iceberg_register(registry));
 #endif
     UD_TRY(ud_advanced_register(registry));
+    UD_TRY(ud_row_range_register(registry));
     static const struct {
         const char *id, *name;
         int kind;

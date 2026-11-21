@@ -10,7 +10,7 @@ parser.add_argument("--output", required=True, type=pathlib.Path)
 args = parser.parse_args()
 folders = []
 packages = {}
-# A newer SDK consumes the public net8.0 library without an online targeting-pack
+# The installed consumer targets the same .NET framework as the public SDK.
 # restore. These exact packs already participated in the actual SDK build.
 for path in args.assets:
     assets = json.loads(path.read_text())

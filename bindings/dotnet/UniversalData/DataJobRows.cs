@@ -5,6 +5,8 @@ namespace UniversalData;
 
 public sealed class DataJobRows<TInput, TRow>
 {
+    private (string Column, bool Descending)[]? order;
+
     internal DataJobRows(DataJob<TInput> job, string flow, string step, uint port = 0)
     {
         Job = job;
@@ -67,6 +69,60 @@ public sealed class DataJobRows<TInput, TRow>
         return new(Job, Flow, name);
     }
 
+    public DataJobRows<TInput, TRow> OrderBy(Expression<Func<TRow, object?>> key, string? step = null) =>
+        Sort(key, false, step);
+
+    public DataJobRows<TInput, TRow> OrderByDescending(Expression<Func<TRow, object?>> key, string? step = null) =>
+        Sort(key, true, step);
+
+    public DataJobRows<TInput, TRow> ThenBy(Expression<Func<TRow, object?>> key) => AddOrder(key, false);
+
+    public DataJobRows<TInput, TRow> ThenByDescending(Expression<Func<TRow, object?>> key) => AddOrder(key, true);
+
+    public DataJobRows<TInput, TRow> Skip(long count, string? step = null) =>
+        Range(DataJobRange.Constant("skip", count), step);
+
+    public DataJobRows<TInput, TRow> Skip(Expression<Func<TInput, long>> count, string? step = null) =>
+        Range(DataJobRange.Parameter("skip", count, Job.Id, step ?? "skip"), step);
+
+    public DataJobRows<TInput, TRow> Take(long count, string? step = null) =>
+        Range(DataJobRange.Constant("take", count), step);
+
+    public DataJobRows<TInput, TRow> Take(Expression<Func<TInput, long>> count, string? step = null) =>
+        Range(DataJobRange.Parameter("take", count, Job.Id, step ?? "take"), step);
+
+    private DataJobRows<TInput, TRow> Sort(Expression<Func<TRow, object?>> key, bool descending, string? step)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        string name = Graph.Step(step, "sort");
+        string column = new NativeRuleExpression(Job.Id, name, key).Key(direct: true);
+        Graph.Plan.Component(name, "sort", new { keys = new[] { column }, keyDirections = new[] { descending } },
+            Flow).Connect(Flow, Step, name, Port);
+        return new(Job, Flow, name) { order = [(column, descending)] };
+    }
+
+    private DataJobRows<TInput, TRow> AddOrder(Expression<Func<TRow, object?>> key, bool descending)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        if (order is null || Graph.Plan.HasOutputConnection(Flow, Step))
+            throw new ArgumentException($"Job '{Job.Id}', step '{Step}': ThenBy requires an unconsumed OrderBy.");
+        string column = new NativeRuleExpression(Job.Id, Step, key).Key(direct: true);
+        if (order.Any(item => item.Column == column))
+            throw new ArgumentException($"Job '{Job.Id}', step '{Step}': ordering keys must be distinct.");
+        order = [.. order, (column, descending)];
+        Graph.ComponentConfig(Flow, Step, "keys", order.Select(item => item.Column).ToArray());
+        Graph.ComponentConfig(Flow, Step, "keyDirections", order.Select(item => item.Descending).ToArray());
+        return this;
+    }
+
+    private DataJobRows<TInput, TRow> Range(DataJobRange range, string? step)
+    {
+        string name = Graph.Step(step, range.Op);
+        Graph.Plan.Component(name, "rowRange", new { ranges = new[] { range } }, Flow)
+            .Connect(Flow, Step, name, Port);
+        return new(Job, Flow, name);
+    }
+
     public (DataJobRows<TInput, TRow> First, DataJobRows<TInput, TRow> Second) Fork(string? step = null)
     {
         string name = Graph.Step(step, "fork");
@@ -108,12 +164,18 @@ public sealed class DataJobRows<TInput, TRow>
     internal int[] KeyOrdinals(string step, Expression<Func<TRow, object?>> key,
         Expression<Func<TRow, object?>>[] additional)
     {
-        var fields = EntityMapping.For<TRow>().Members;
-        var keys = additional.Prepend(key).Select(selector => new NativeRuleExpression(Job.Id, step, selector).Key())
-            .Select(name => Enumerable.Range(0, fields.Count).FirstOrDefault(index => fields[index].ColumnName == name, -1))
-            .ToArray();
-        if (keys.Any(index => index < 0) || keys.Distinct().Count() != keys.Length)
-            throw new ArgumentException("Destination keys must be distinct columns in the mapped row", nameof(additional));
+        var fields = EntityMapping.For<TRow>().ColumnOrdinals;
+        var keys = new int[additional.Length + 1];
+        var used = new HashSet<int>();
+        for (int index = 0; index < keys.Length; index++)
+        {
+            var selector = index == 0 ? key : additional[index - 1];
+            ArgumentNullException.ThrowIfNull(selector);
+            string name = new NativeRuleExpression(Job.Id, step, selector).Key();
+            if (!fields.TryGetValue(name, out var ordinal) || !used.Add(ordinal))
+                throw new ArgumentException("Destination keys must be distinct columns in the mapped row", nameof(additional));
+            keys[index] = ordinal;
+        }
         return keys;
     }
 
@@ -335,9 +397,8 @@ public sealed class DataJobRows<TInput, TRow>
     {
         ArgumentNullException.ThrowIfNull(selector);
         string column = new NativeRuleExpression(Job.Id, step, selector).Key();
-        var fields = EntityMapping.For<TRow>().Members;
-        int index = Array.FindIndex(fields.ToArray(), field => field.ColumnName == column);
-        if (index < 0) throw new ArgumentException("Lookup key is not in the mapped row", parameter);
+        if (!EntityMapping.For<TRow>().ColumnOrdinals.TryGetValue(column, out int index))
+            throw new ArgumentException("Lookup key is not in the mapped row", parameter);
         return index;
     }
 }

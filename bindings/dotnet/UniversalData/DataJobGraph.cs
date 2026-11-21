@@ -61,10 +61,13 @@ internal sealed class DataJobGraph(string id, Type argument)
     }
 
     internal void Incremental(string pipeline, string step, object config) =>
-        plan.SetComponentConfig(pipeline, step, "incremental", config);
+        ComponentConfig(pipeline, step, "incremental", config);
 
-    internal void ComponentConfig(string pipeline, string step, string property, object? value) =>
+    internal void ComponentConfig(string pipeline, string step, string property, object? value)
+    {
         plan.SetComponentConfig(pipeline, step, property, value);
+        Invalidate();
+    }
 
     internal void ComponentType(string pipeline, string step, string type) =>
         plan.SetComponentType(pipeline, step, type);
@@ -226,7 +229,7 @@ internal sealed class DataJobGraph(string id, Type argument)
         foreach (var (step, pending) in storageComponents)
             if (available.TryGetValue(pending.Source, out var binding) &&
                 binding.Definition.StorageConnection is { } configured && pending.ExplicitStorage is null)
-                ComponentConfig(pending.Pipeline, step, "storageConnection", configured);
+                plan.SetComponentConfig(pending.Pipeline, step, "storageConnection", configured);
         var execution = options is null ? null : new
         {
             options.BatchRows, options.EdgeCapacity, options.MemoryBytes, options.TimeoutMilliseconds,

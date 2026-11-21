@@ -1,4 +1,4 @@
-"""Restore both exact runtime dependencies and execute the .NET 8 SDK on the current platform."""
+"""Restore both exact runtime dependencies and execute the .NET 10 SDK on the current platform."""
 import argparse
 import hashlib
 import json
@@ -12,6 +12,8 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCT = json.loads((ROOT / "metadata/product.json").read_text(encoding="utf-8"))["product"]
 VERSION = PRODUCT["sdkVersion"]
+TARGET_FRAMEWORK = PRODUCT["dotnetTargetFramework"]
+RUNTIME_FRAMEWORK_PREFIX = TARGET_FRAMEWORK.removeprefix("net").split(".", 1)[0] + "."
 RUNTIME_DRIVERS = ("sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci",
                    "kafka", "rabbitmq", "rocketmq", "activemq")
 
@@ -73,10 +75,13 @@ def run(args, source):
         project = work / "InstalledSdk.csproj"
         project.write_text('''<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType>
+    <TargetFramework>''' + TARGET_FRAMEWORK + '''</TargetFramework><OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
   </PropertyGroup>
-  <ItemGroup><PackageReference Include="UniversalData" Version="[''' + VERSION + ''']" /></ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="UniversalData" Version="[''' + VERSION + ''']" />
+  </ItemGroup>
 </Project>
 ''', encoding="utf-8")
         for source_file in (ROOT / "tests/nuget_consumer").glob("*.cs"):
@@ -86,7 +91,7 @@ def run(args, source):
         lock_hash = hashlib.sha256((work / "packages.lock.json").read_bytes()).hexdigest()
         subprocess.run([args.dotnet, "build", project, "-c", "Release", "--no-restore",
                         "-p:TreatWarningsAsErrors=true"], cwd=work, env=env, check=True, timeout=240)
-        assembly = work / "bin/Release/net8.0/InstalledSdk.dll"
+        assembly = work / f"bin/Release/{TARGET_FRAMEWORK}/InstalledSdk.dll"
         command = [args.dotnet, str(assembly)] + (["--complete"] if args.complete else [])
         output = subprocess.check_output(command, cwd=work, env=env, text=True, timeout=120)
     facts = json.loads(output)
@@ -97,8 +102,9 @@ def run(args, source):
     mq_ok = set(mq) == expected_brokers and all(
         item.get("publishedCommitted") == 2 and item.get("consumedCommitted") == 2 and
         item.get("consumedAcknowledged") == 2 for item in mq.values())
-    if (not facts["framework"].startswith("8.") or facts["version"] != VERSION
-            or facts["http"] != 200 or facts["sqliteRows"] != 35
+    if (not facts["framework"].startswith(RUNTIME_FRAMEWORK_PREFIX) or facts["version"] != VERSION
+            or facts["http"] != 200 or facts["sqliteRows"] != 35 or facts["pageRows"] != 2
+            or not all(facts.get(key) is True for key in ("singleton", "isolatedCancellation", "workerExited"))
             or set(facts.get("drivers", [])) != expected_drivers
             or set(facts.get("brokers", [])) != expected_brokers or not mq_ok):
         raise ValueError(f"Installed SDK facts differ: {facts}")
@@ -111,10 +117,12 @@ def main():
     parser.add_argument("--dotnet", default="dotnet")
     parser.add_argument("--evidence", required=True, type=Path)
     parser.add_argument("--complete", action="store_true")
+    parser.add_argument("--current-rid-only", action="store_true",
+                        help="Use an existing single-runtime feed for this platform's driver checks")
     args = parser.parse_args()
     source = args.source.resolve()
     rid = "win-x64" if os.name == "nt" else "linux-x64"
-    required_rids = ("linux-x64", "win-x64") if args.complete else (rid,)
+    required_rids = ("linux-x64", "win-x64") if args.complete and not args.current_rid_only else (rid,)
     validate_runtime_archive(source, rid, args.complete)
     checked = hashes(source, required_rids)
     facts = run(args, source)

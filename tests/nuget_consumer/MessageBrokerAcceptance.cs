@@ -7,7 +7,7 @@ internal static class MessageBrokerAcceptance
     private const int ExpectedRows = 2;
 
     internal static async Task<Dictionary<string, MqAcceptanceMetrics>> RunAsync(
-        DataClient data, IReadOnlyDictionary<string, DataSourceKind> kinds,
+        IDataClient data, IReadOnlyDictionary<string, DataSourceKind> kinds,
         IReadOnlyDictionary<string, string> targets, IReadOnlyDictionary<string, string> groups,
         string database, CancellationToken cancellation)
     {
@@ -65,7 +65,7 @@ internal static class MessageBrokerAcceptance
             .Append();
     }
 
-    private static async Task<ExecutionMetrics> ConsumeUntilCommittedAsync(DataClient data,
+    private static async Task<ExecutionMetrics> ConsumeUntilCommittedAsync(IDataClient data,
         DataJob<object> job, string database, CancellationToken cancellation)
     {
         await using var run = await data.StartAsync(job, new object(), cancellation).ConfigureAwait(false);

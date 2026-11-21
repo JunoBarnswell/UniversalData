@@ -976,7 +976,11 @@ ud_status ud_execution_diagnostics(ud_execution *e, char **out, uint32_t *length
     if (state == UD_EXEC_RUNNING || state == UD_EXEC_DRAINING)
         return UD_BUSY;
     ud_bytes bytes = {.ctx = e->ctx};
-    ud_status status = ud_bytes_put(&bytes, "{\"connections\":", sizeof("{\"connections\":") - 1);
+    ud_status status = ud_bytes_put(&bytes, "{\"packageId\":", sizeof("{\"packageId\":") - 1);
+    if (!status)
+        status = ud_json_quote(&bytes, e->package->id.data, e->package->id.length);
+    if (!status)
+        status = ud_bytes_put(&bytes, ",\"connections\":", sizeof(",\"connections\":") - 1);
     if (!status)
         status = ud_connections_diagnostics(e, &bytes);
     if (!status)

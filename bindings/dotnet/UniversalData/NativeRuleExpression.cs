@@ -13,7 +13,65 @@ internal sealed class NativeRuleExpression(string job, string step, LambdaExpres
 
     internal JsonNode Predicate() => Bind(rule.Body);
 
-    internal JsonArray Projection(Type output)
+    internal JsonNode SqlPredicate(SqlTableQueryParameters parameters, Func<string, string> resolveColumn)
+    {
+        JsonNode BindValue(Expression value)
+        {
+            value = StripLosslessConvert(value);
+            if (value is ConstantExpression literal)
+                return parameters.Literal(Literal(literal.Value, literal.Type));
+            if (value is MemberExpression { Member: PropertyInfo property } member)
+            {
+                if (member.Expression == row)
+                    return new JsonObject { ["col"] = resolveColumn(Column(row.Type, property).ColumnName) };
+                if (argument is not null && member.Expression == argument)
+                    return parameters.Parameter(Column(argument.Type, property));
+            }
+            throw Error(value.NodeType.ToString());
+        }
+
+        JsonNode BindPredicate(Expression condition)
+        {
+            if (condition is BinaryExpression binary)
+            {
+                CheckOperator(binary);
+                string op = binary.NodeType switch
+                {
+                    ExpressionType.Equal => "eq",
+                    ExpressionType.NotEqual => "ne",
+                    ExpressionType.LessThan => "lt",
+                    ExpressionType.LessThanOrEqual => "le",
+                    ExpressionType.GreaterThan => "gt",
+                    ExpressionType.GreaterThanOrEqual => "ge",
+                    ExpressionType.AndAlso or ExpressionType.And when binary.Type == typeof(bool) => "and",
+                    ExpressionType.OrElse or ExpressionType.Or when binary.Type == typeof(bool) => "or",
+                    _ => throw Error(binary.NodeType.ToString())
+                };
+                if (op is "and" or "or")
+                    return Operation(op, BindPredicate(binary.Left), BindPredicate(binary.Right));
+                if ((op is "eq" or "ne") &&
+                    (binary.Left is ConstantExpression { Value: null } ||
+                     binary.Right is ConstantExpression { Value: null }))
+                {
+                    var operand = binary.Left is ConstantExpression { Value: null } ? binary.Right : binary.Left;
+                    var isNull = Operation("isnull", BindValue(operand));
+                    return op == "eq" ? isNull : Operation("not", isNull);
+                }
+                return Operation(op, BindValue(binary.Left), BindValue(binary.Right));
+            }
+            if (condition is UnaryExpression { NodeType: ExpressionType.Not, Type: var type, Operand: var negated } &&
+                type == typeof(bool))
+                return Operation("not", BindPredicate(negated));
+            if (condition is MemberExpression { Member.Name: "HasValue", Expression: { } nullable } &&
+                Nullable.GetUnderlyingType(nullable.Type) is not null)
+                return Operation("not", Operation("isnull", BindValue(nullable)));
+            return Operation("eq", BindValue(condition), parameters.Literal(Literal(true, typeof(bool))));
+        }
+
+        return BindPredicate(rule.Body);
+    }
+
+    internal JsonArray Projection(Type output, bool direct = false)
     {
         var fields = new Dictionary<string, Expression>(StringComparer.OrdinalIgnoreCase);
         if (rule.Body is MemberInitExpression init)
@@ -40,18 +98,27 @@ internal sealed class NativeRuleExpression(string job, string step, LambdaExpres
         {
             if (!fields.Remove(member.Property.Name, out var value))
                 throw Error("unassigned output member " + member.Property.Name);
-            result.Add(new JsonObject { ["name"] = member.ColumnName, ["expression"] = Bind(value) });
+            var expression = direct ? new JsonObject { ["column"] = DirectColumn(StripLosslessConvert(value)) }
+                : Bind(value);
+            result.Add(new JsonObject { ["name"] = member.ColumnName, ["expression"] = expression });
         }
         if (fields.Count != 0)
             throw Error("unmapped output member " + fields.Keys.First());
         return result;
     }
 
-    internal string Key()
+    internal string Key(bool direct = false)
     {
-        var body = StripConvert(rule.Body);
+        var body = rule.Body;
+        if (!direct || body.Type == typeof(object))
+            body = StripConvert(body);
+        return DirectColumn(body);
+    }
+
+    private string DirectColumn(Expression body)
+    {
         if (body is not MemberExpression { Expression: var owner, Member: PropertyInfo property } || owner != row)
-            throw Error("key selector " + body.NodeType);
+            throw Error("column selector " + body.NodeType);
         return Column(row.Type, property).ColumnName;
     }
 
@@ -106,10 +173,7 @@ internal sealed class NativeRuleExpression(string job, string step, LambdaExpres
 
     private JsonNode Binary(BinaryExpression value)
     {
-        // A user-defined operator is still a CLR method, including overloads on value types.
-        if (value.Method is { } method && method.DeclaringType != typeof(string) &&
-            method.DeclaringType != typeof(decimal))
-            throw Error(method.DeclaringType?.FullName + "." + method.Name);
+        CheckOperator(value);
         var left = value.Left;
         var right = value.Right;
         bool eq = value.NodeType == ExpressionType.Equal;
@@ -147,7 +211,42 @@ internal sealed class NativeRuleExpression(string job, string step, LambdaExpres
             ExpressionType.Or when value.Type == typeof(bool) => "or",
             _ => throw Error(value.NodeType.ToString())
         };
-        return Operation(op, Bind(left), Bind(right));
+        var result = Operation(op, Bind(left), Bind(right));
+        if ((op is "gt" or "ge" or "lt" or "le") && value.IsLifted && !value.IsLiftedToNull)
+            return Function("coalesce", result, Literal(false, typeof(bool)));
+        return result;
+    }
+
+    private void CheckOperator(BinaryExpression value)
+    {
+        if (value.Method is { } method && method.DeclaringType != typeof(string) &&
+            method.DeclaringType != typeof(decimal))
+            throw Error(method.DeclaringType?.FullName + "." + method.Name);
+    }
+
+    internal static Expression StripLosslessConvert(Expression value)
+    {
+        while (value is UnaryExpression
+            { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked, Method: null } conversion)
+        {
+            var nullableSource = Nullable.GetUnderlyingType(conversion.Operand.Type);
+            var nullableTarget = Nullable.GetUnderlyingType(conversion.Type);
+            if (nullableSource is not null && nullableTarget is null)
+                break;
+            var source = nullableSource ?? conversion.Operand.Type;
+            var target = nullableTarget ?? conversion.Type;
+            if (source != target &&
+                !(target == typeof(long) && (source == typeof(int) || source == typeof(short) || source == typeof(sbyte))) &&
+                !(target == typeof(int) && (source == typeof(short) || source == typeof(sbyte))) &&
+                !(target == typeof(short) && source == typeof(sbyte)) &&
+                !(target == typeof(ulong) && (source == typeof(uint) || source == typeof(ushort) || source == typeof(byte))) &&
+                !(target == typeof(uint) && (source == typeof(ushort) || source == typeof(byte))) &&
+                !(target == typeof(ushort) && source == typeof(byte)) &&
+                !(target == typeof(double) && source == typeof(float)))
+                break;
+            value = conversion.Operand;
+        }
+        return value;
     }
 
     private JsonNode Method(MethodCallExpression call)

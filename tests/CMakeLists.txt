@@ -275,6 +275,10 @@ if(TARGET ud_package)
   if(TARGET ud_connector_sqlite)
     add_test(NAME next_phase_pipeline_recovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/next_phase_pipeline.py $<TARGET_FILE:test_next_phase_execution> $<TARGET_FILE:ud_connector_sqlite>)
     set_tests_properties(next_phase_pipeline_recovery PROPERTIES TIMEOUT 420)
+    add_test(NAME linq_range_recovery COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/linq_range_recovery.py
+      $<TARGET_FILE:test_next_phase_execution> $<TARGET_FILE:ud_connector_sqlite>)
+    set_tests_properties(linq_range_recovery PROPERTIES LABELS "sql-etl;crash-recovery" TIMEOUT 180)
     if(WIN32)
       set_tests_properties(next_phase_pipeline_recovery PROPERTIES TIMEOUT 900 ENVIRONMENT "UD_TEST_RECOVERY_TRACE=1")
     endif()

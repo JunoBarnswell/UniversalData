@@ -1,4 +1,4 @@
-"""Exercise a real mTLS coordinator and two independent Worker nodes."""
+"""Exercise the real remote Worker protocol and the three-Agent HA sentinel."""
 import hashlib
 import http.cookiejar
 import http.server
@@ -15,6 +15,12 @@ import time
 import urllib.request
 
 from product_version import PROTOCOL_VERSION
+
+# The sentinel and the operator demo deliberately share one orchestration
+# implementation.  This import is only process launch/API plumbing; the
+# product Management and Worker binaries remain the execution authority.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples" / "worker-cluster"))
+from cluster_harness import ClusterFailure, ClusterHarness  # noqa: E402
 
 
 def write(path, value):
@@ -250,5 +256,13 @@ if __name__ == "__main__":
     if "--sentinel" in sys.argv[5:] and (not postgres or not Path(postgres).is_file()):
         print("Blocked: a dedicated PostgreSQL 17 Catalog is required")
         raise SystemExit(77)
+    if "--sentinel" in sys.argv[5:]:
+        with tempfile.TemporaryDirectory(prefix="ud-sentinel-three-agents-") as directory:
+            try:
+                ClusterHarness(*args, root=Path(directory) / "instance", postgres=postgres, cluster=True).run_full()
+            except ClusterFailure as error:
+                print(f"FAIL: {error}", file=sys.stderr)
+                raise SystemExit(1)
+        raise SystemExit(0)
     with tempfile.TemporaryDirectory(prefix="ud-remote-workers-") as directory:
         exercise(*args, Path(directory), postgres)

@@ -45,7 +45,9 @@ ud_status ud_operator_configuration_schema(int32_t kind, ud_string *out) {
         schema = "{\"type\":\"object\",\"properties\":{\"keys\":{\"type\":\"array\",\"items\":{"
                  "\"anyOf\":[{\"type\":\"integer\",\"minimum\":0},{\"type\":\"string\","
                  "\"minLength\":1}],\"x-role\":\"field-selector\"},\"minItems\":1,\"maxItems\":16,"
-                 "\"uniqueItems\":true},\"descending\":{\"type\":\"boolean\"},\"partitions\":{"
+                 "\"uniqueItems\":true},\"descending\":{\"type\":\"boolean\"},"
+                 "\"keyDirections\":{\"type\":\"array\",\"items\":{\"type\":\"boolean\"},\"minItems\":1,\"maxItems\":16},"
+                 "\"partitions\":{"
                  "\"type\":\"integer\",\"minimum\":1,\"maximum\":64}},\"required\":[\"keys\"],"
                  "\"additionalProperties\":false}";
         break;

@@ -15,6 +15,9 @@ internal sealed class EntityMapping
         var table = entityType.GetCustomAttribute<SugarTable>(true);
         TableName = table?.TableName ?? entityType.Name;
         Members = BuildMembers(entityType);
+        var ordinals = new Dictionary<string, int>(Members.Count, StringComparer.Ordinal);
+        for (int index = 0; index < Members.Count; index++) ordinals.TryAdd(Members[index].ColumnName, index);
+        ColumnOrdinals = ordinals;
         Keys = Members.Where(member => member.IsPrimaryKey).ToArray();
         InsertMembers = Members.Where(member => !member.IsIdentity && !member.IgnoreInsert).ToArray();
     }
@@ -22,6 +25,7 @@ internal sealed class EntityMapping
     internal Type EntityType { get; }
     internal string TableName { get; }
     internal IReadOnlyList<EntityMember> Members { get; }
+    internal IReadOnlyDictionary<string, int> ColumnOrdinals { get; }
     internal IReadOnlyList<EntityMember> Keys { get; }
     internal IReadOnlyList<EntityMember> InsertMembers { get; }
 

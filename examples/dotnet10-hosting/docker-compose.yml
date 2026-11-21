@@ -1,0 +1,96 @@
+services:
+  orders-primary:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${UD_POSTGRES_SUPERUSER_PASSWORD:?run scripts/postgres.sh prepare first}
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - wal_keep_size=64MB
+      - -c
+      - hot_standby=on
+      - -c
+      - listen_addresses=*
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+    ports:
+      - "127.0.0.1:${UD_PRIMARY_PORT:-55432}:5432"
+    volumes:
+      - orders-primary-data:/var/lib/postgresql/data
+      - ./.local/postgres/primary-init:/docker-entrypoint-initdb.d:ro
+      - ./.local/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orders"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  orders-replica-1:
+    image: postgres:17
+    depends_on:
+      orders-primary:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/opt/universaldata/replica-entrypoint.sh"]
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      PRIMARY_HOST: orders-primary
+      PRIMARY_PORT: 5432
+      REPLICATION_USER: replicator
+      REPLICATION_PASSWORD: ${UD_REPLICATION_PASSWORD:?run scripts/postgres.sh prepare first}
+      REPLICA_NAME: orders-replica-1
+      POSTGRES_DB: orders
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${UD_POSTGRES_SUPERUSER_PASSWORD:?run scripts/postgres.sh prepare first}
+    ports:
+      - "127.0.0.1:${UD_REPLICA_1_PORT:-55433}:5432"
+    volumes:
+      - orders-replica-1-data:/var/lib/postgresql/data
+      - ./postgres/replica-entrypoint.sh:/opt/universaldata/replica-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orders"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  orders-replica-2:
+    image: postgres:17
+    depends_on:
+      orders-primary:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/opt/universaldata/replica-entrypoint.sh"]
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      PRIMARY_HOST: orders-primary
+      PRIMARY_PORT: 5432
+      REPLICATION_USER: replicator
+      REPLICATION_PASSWORD: ${UD_REPLICATION_PASSWORD:?run scripts/postgres.sh prepare first}
+      REPLICA_NAME: orders-replica-2
+      POSTGRES_DB: orders
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${UD_POSTGRES_SUPERUSER_PASSWORD:?run scripts/postgres.sh prepare first}
+    ports:
+      - "127.0.0.1:${UD_REPLICA_2_PORT:-55434}:5432"
+    volumes:
+      - orders-replica-2-data:/var/lib/postgresql/data
+      - ./postgres/replica-entrypoint.sh:/opt/universaldata/replica-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orders"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  orders-primary-data:
+    name: ud-dotnet10-orders-primary
+  orders-replica-1-data:
+    name: ud-dotnet10-orders-replica-1
+  orders-replica-2-data:
+    name: ud-dotnet10-orders-replica-2

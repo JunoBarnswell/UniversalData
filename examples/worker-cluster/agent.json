@@ -1,15 +1,15 @@
 {
   "managementEndpoints": [
-    { "url": "wss://management-linux.example.net:5443/", "certificateSha256": "REPLACE_WITH_LINUX_CERTIFICATE_SHA256" },
-    { "url": "wss://management-windows.example.net:5443/", "certificateSha256": "REPLACE_WITH_WINDOWS_CERTIFICATE_SHA256" }
+    { "url": "wss://management-active.example.net:5443/", "certificateSha256": "REPLACE_WITH_ACTIVE_CERTIFICATE_SHA256" },
+    { "url": "wss://management-standby.example.net:5443/", "certificateSha256": "REPLACE_WITH_STANDBY_CERTIFICATE_SHA256" }
   ],
-  "nodeId": "etl-node-a",
+  "nodeId": "worker-1",
   "certificatePath": "/etc/universaldata/agent.pfx",
   "certificatePasswordFile": "/run/secrets/universaldata-agent-password",
   "policyPath": "/etc/universaldata/agent-policy.json",
   "supervisorPath": "/etc/universaldata/worker-supervisor.json",
-  "maxProcesses": 4,
-  "maxCpu": 8,
-  "maxMemoryBytes": 8589934592,
+  "maxProcesses": 1,
+  "maxCpu": 1,
+  "maxMemoryBytes": 805306368,
   "tenants": ["data-platform"]
 }

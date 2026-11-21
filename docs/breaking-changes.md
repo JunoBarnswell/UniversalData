@@ -1,4 +1,9 @@
-# SDK 11.0.0 / ABI 15
+# SDK 12.0.0 / .NET 10 / ABI 15
+
+- C# SDK 目标框架从 `net8.0` 迁移到 `net10.0`；使用 SDK 12 重新编译消费者，并让安装验收使用 .NET 10 SDK。
+- `UniversalData` NuGet 现在携带 `Microsoft.Extensions.DependencyInjection.Abstractions` 与 `Microsoft.Extensions.Configuration.Abstractions` 10.0.15。应用可通过 `AddUniversalData` 注册一个根容器 Singleton `IDataClient`；重复注册默认客户端会报错。
+- 新增三种注册入口：配置节加 Content Root、YAML 路径，以及 policy/tenant/builder 配置。注册时检查入口路径，配置 YAML 在首次解析 Singleton 时校验，Worker 仍在首次作业时按需启动。
+- Worker 私有修订升至 11。Native ABI 与 Package 为 15，Journal 格式为 4。精确运行时收据尚未记录，当前版本不宣称已完成发布验收。
 
 - 将 `DataClient.Etl()` 与专用 builder 的声明迁至 `DataJob`。将 `EtlClient` 的运行、预检、预览和恢复调用迁至 `DataClient` 的 `DataJob` 或 `Package` 重载。CDC 镜像使用 `FromChanges<T>` 和 `ApplyChangesBy`。
 - 通过 `POST /api/versions` 保存不可变版本，通过 `POST /api/publications` 冻结作业、环境修订和调度。SDK 发布用 `DataClient.PublishAsync`，管理调用用 `EtlManagementClient.PublishJobAsync`。

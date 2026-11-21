@@ -110,21 +110,16 @@ public sealed class Batch : IDisposable
     /// <summary>Map serialized Native rows to strong entities without a JSON row round-trip.</summary>
     public IReadOnlyList<T> ToEntities<T>() => EnumerateEntities<T>().ToArray();
 
-    internal IEnumerable<T> EnumerateEntities<T>()
+    internal IEnumerable<T> EnumerateEntities<T>() =>
+        EnumerateEntities(new EntityRowFactory<T>(ManagedBatch.BuildEntityProjection<T>(SchemaJson)));
+
+    internal IEnumerable<T> EnumerateEntities<T>(EntityRowFactory<T> factory, CancellationToken cancellation = default)
     {
-        string schema;
-        uint count;
-        lock (execution)
-        {
-            EnsureOpen();
-            DataOwnership.Check(context, Native.ud_schema_to_json(batch, out var text, out var length));
-            schema = DataOwnership.Text(text, length);
-            count = Native.ud_batch_rows(batch);
-        }
-        var projection = ManagedBatch.BuildEntityProjection<T>(schema);
-        var factory = new EntityRowFactory<T>(projection);
+        uint count = Rows;
+        var projection = factory.Projection;
         for (uint row = 0; row < count; row++)
         {
+            cancellation.ThrowIfCancellationRequested();
             lock (execution)
             {
                 EnsureOpen();

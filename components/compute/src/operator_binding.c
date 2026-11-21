@@ -27,10 +27,11 @@ static int named(const ud_json *j, const char *n) {
 ud_status ud_operator_bind_options(ud_context *ctx, const ud_operator_options *input,
                                    const ud_batch *schema, ud_operator_options *out,
                                    ud_json **document, char **configuration, uint32_t keys[16],
-                                   ud_plan **plan) {
+                                   uint32_t *directions, ud_plan **plan) {
     *out = *input;
     *document = NULL;
     *configuration = NULL;
+    *directions = 0;
     *plan = NULL;
     ud_string declaration;
     UD_TRY(ud_operator_configuration_schema(input->kind, &declaration));
@@ -74,7 +75,14 @@ ud_status ud_operator_bind_options(ud_context *ctx, const ud_operator_options *i
         UD_TRY(ud_compute_field_index(schema, ud_json_at(selectors, i), keys + i));
     out->keys = keys;
     if (input->kind == UD_OPERATOR_SORT) {
-        out->descending = named(member(*document, "descending"), "true");
+        const ud_json *per_key = member(*document, "keyDirections");
+        const ud_json *descending = member(*document, "descending");
+        if (per_key && (descending || ud_json_size(per_key) != out->key_count))
+            return UD_SCHEMA;
+        out->descending = named(descending, "true");
+        for (uint32_t i = 0; per_key && i < out->key_count; i++)
+            if (named(ud_json_at(per_key, i), "true"))
+                *directions |= UINT32_C(1) << i;
         return UD_OK;
     }
     uint64_t partition = 0;

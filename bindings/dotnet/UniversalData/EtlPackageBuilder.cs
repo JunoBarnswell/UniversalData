@@ -38,9 +38,9 @@ internal sealed class EtlPackageBuilder(string id)
 
     internal EtlPackageBuilder SqlSource(string name, string connection, string? table, string? sql,
         JsonElement schema, bool stream, uint? batchSize, SqlParameterBatch? parameters, string pipeline = "main",
-        string schemaPolicy = "compatible") =>
+        string schemaPolicy = "compatible", System.Text.Json.Nodes.JsonObject? tableQuery = null) =>
         Component(name, "sql.source", new { connection, table, sql, schema,
-            readMode = stream ? "stream" : "snapshot", batchSize, parameters,
+            readMode = stream ? "stream" : "snapshot", batchSize, parameters, tableQuery,
             schemaPolicy = table is null ? null : new { policy = schemaPolicy } }, pipeline);
 
     internal EtlPackageBuilder ChangeSource(string name, string connection, string table,
@@ -178,6 +178,9 @@ internal sealed class EtlPackageBuilder(string id)
 
     internal void SetComponentConfig(string pipeline, string component, string property, object? value) =>
         Flow(pipeline).Extend(component, property, value);
+
+    internal bool HasOutputConnection(string pipeline, string component) =>
+        componentEdges.Any(edge => edge.Pipeline == pipeline && edge.From == component);
 
     internal void SetComponentType(string pipeline, string component, string type) =>
         Flow(pipeline).SetComponentType(component, type);

@@ -10,12 +10,18 @@ public sealed record ManagedFunctionDefinition(string Id,string Name,uint Minimu
 
 public sealed class ManagedFunctionContext
 {
-    private readonly IntPtr memory,field;private readonly CallbackLifetime lifetime;
-    internal ManagedFunctionContext(IntPtr context,IntPtr outputField,CallbackLifetime valid) { memory=context;field=outputField;lifetime=valid; }
+    private readonly IntPtr memory, resultField;
+    private readonly CallbackLifetime lifetime;
+    internal ManagedFunctionContext(IntPtr context, IntPtr outputField, CallbackLifetime valid)
+    {
+        memory = context;
+        resultField = outputField;
+        lifetime = valid;
+    }
     public void CheckCancellation() { lifetime.Open();if(Native.ud_is_cancelled(memory)!=0)throw new UniversalDataException((int)StatusCode.Cancelled,"Function cancelled"); }
     public string ResultSchema {
         get {
-            lifetime.Open();Check(Native.ud_batch_create_fields_raw(memory,field,1,0,out var schema));
+            lifetime.Open();Check(Native.ud_batch_create_fields_raw(memory,resultField,1,0,out var schema));
             try { Check(Native.ud_schema_to_json_raw(schema,out var text,out var length));return DataOwnership.Text(text,length); }
             finally { Native.ud_batch_destroy(schema); }
         }

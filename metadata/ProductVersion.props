@@ -1,11 +1,14 @@
 <!-- Generated from metadata/product.json. -->
 <Project>
   <PropertyGroup>
-    <UDSdkVersion>11.0.0</UDSdkVersion>
+    <UDSdkVersion>12.0.0</UDSdkVersion>
+    <UDDotnetTargetFramework>net10.0</UDDotnetTargetFramework>
     <UDSqlSugarCoreVersion>5.1.4.216</UDSqlSugarCoreVersion>
     <UDMySqlConnectorVersion>2.6.1</UDMySqlConnectorVersion>
     <UDSQLitePCLRawlibe_sqlite3Version>2.1.14</UDSQLitePCLRawlibe_sqlite3Version>
     <UDSystemSecurityCryptographyPkcsVersion>8.0.2</UDSystemSecurityCryptographyPkcsVersion>
     <UDYamlDotNetVersion>16.3.0</UDYamlDotNetVersion>
+    <UDMicrosoftExtensionsDependencyInjectionAbstractionsVersion>10.0.15</UDMicrosoftExtensionsDependencyInjectionAbstractionsVersion>
+    <UDMicrosoftExtensionsConfigurationAbstractionsVersion>10.0.15</UDMicrosoftExtensionsConfigurationAbstractionsVersion>
   </PropertyGroup>
 </Project>

@@ -62,6 +62,7 @@ static inline int sink_kind(int k) {
     return file_sink(k) || k == SQL_SINK || k == REST_SINK;
 }
 typedef struct ud_derive_plan ud_derive_plan;
+ud_status ud_row_range_register(ud_registry *);
 ud_status ud_builtin_sink_projection(const ud_component_context *, const ud_json *,
                                      const ud_batch *, int, ud_batch **, uint32_t **, uint32_t *);
 ud_status ud_derive_bind(const ud_component_context *, const ud_json *, const ud_batch *,

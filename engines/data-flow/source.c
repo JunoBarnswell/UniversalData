@@ -243,6 +243,104 @@ static ud_status bind_scan(builtin *b, const ud_json *diff) {
     ud_free(selected);
     return s;
 }
+
+/* A tableQuery is a physical SQL projection.  Its declared source schema is
+ * the output shape (including aliases), while actual_schema remains the
+ * complete discovered table used for column/order/key proofs. */
+static ud_status bind_table_query(builtin *b) {
+    const ud_json *query = ud_member(b->config, "tableQuery");
+    const ud_json *projection = query ? ud_member(query, "projection") : NULL;
+    if (!query || ud_json_kind(query) != UD_JSON_OBJECT || !projection ||
+        ud_json_kind(projection) != UD_JSON_ARRAY || !ud_json_size(projection) ||
+        ud_json_size(projection) != b->schema->columns)
+        return UD_SCHEMA;
+    ud_status status = UD_OK;
+    for (uint32_t output = 0; !status && output < b->schema->columns; output++) {
+        const ud_json *entry = ud_json_at(projection, output);
+        const ud_json *column = ud_member(entry, "column");
+        const ud_json *name = ud_member(entry, "name");
+        ud_string physical = {0}, alias = {0};
+        if (!entry || ud_json_kind(entry) != UD_JSON_OBJECT || !column || !name)
+            status = UD_SCHEMA;
+        if (!status)
+            status = ud_json_string(column, &physical);
+        if (!status)
+            status = ud_json_string(name, &alias);
+        int found = -1;
+        for (uint32_t at = 0; !status && at < b->actual_schema->columns; at++) {
+            const ud_field *field = &b->actual_schema->column[at].field;
+            if (field->name_length == physical.length && !memcmp(field->name, physical.data,
+                                                                  physical.length)) {
+                if (found >= 0)
+                    status = UD_SCHEMA;
+                found = (int)at;
+            }
+        }
+        if (!status && found < 0)
+            status = UD_SCHEMA;
+        if (!status && (b->schema->column[output].field.name_length != alias.length ||
+                        memcmp(b->schema->column[output].field.name, alias.data, alias.length)))
+            status = UD_SCHEMA;
+        for (uint32_t prior = 0; !status && prior < output; prior++) {
+            const ud_json *old = ud_json_at(projection, prior);
+            ud_string old_alias = {0};
+            status = ud_json_string(ud_member(old, "name"), &old_alias);
+            if (!status && old_alias.length == alias.length &&
+                !memcmp(old_alias.data, alias.data, alias.length))
+                status = UD_SCHEMA;
+        }
+        if (!status) {
+            const ud_field *actual = &b->actual_schema->column[found].field;
+            const ud_field *expected = &b->schema->column[output].field;
+            if (actual->child_count || actual->type == UD_STRUCT || actual->type == UD_LIST ||
+                actual->type == UD_MAP)
+                status = UD_UNSUPPORTED;
+            else if (actual->nullable && !expected->nullable)
+                status = UD_INCOMPATIBLE;
+            else if (!ud_field_matches(actual, expected, UD_FIELD_VALUE_TYPE))
+                status = UD_INCOMPATIBLE;
+        }
+    }
+    if (!status)
+        status = ud_builtin_clone_schema(b->context.memory, b->schema, &b->scan_schema);
+    if (!status) {
+        b->scan_mapping = ud_alloc(b->context.memory, b->schema->columns * sizeof(*b->scan_mapping));
+        if (!b->scan_mapping)
+            status = UD_RESOURCE;
+        for (uint32_t at = 0; !status && at < b->schema->columns; at++)
+            b->scan_mapping[at] = at;
+    }
+    if (status) {
+        ud_free(b->scan_mapping);
+        b->scan_mapping = NULL;
+        ud_batch_destroy(b->scan_schema);
+        b->scan_schema = NULL;
+    }
+    return status;
+}
+
+static ud_status bind_table_query_sql(builtin *b) {
+    char *document = NULL;
+    uint32_t length = 0;
+    ud_status status = ud_json_serialize(b->config, &document, &length);
+    if (!status) {
+        int32_t dialect = ud_connection_lease_dialect(b->lease);
+        int32_t style = ud_connection_lease_parameter_style(b->lease);
+        const ud_batch *input_parameters = b->parameters;
+        ud_batch *arguments = NULL;
+        status = ud_sql_compile_table_query(
+            b->context.memory, dialect, style, (ud_string){document, length}, b->actual_schema,
+            input_parameters, &b->read_sql, &arguments);
+        if (!status) {
+            ud_batch_destroy(b->parameters);
+            b->parameters = arguments;
+            b->predicate_pushed = ud_member(ud_member(b->config, "tableQuery"), "where") != NULL;
+        } else
+            ud_batch_destroy(arguments);
+    }
+    ud_free(document);
+    return status;
+}
 static ud_status bind_incremental_scan(builtin *b, const ud_batch *actual, int32_t dialect, int32_t style) {
     ud_cursor *cursor = b->cursor;
     if (!cursor || !cursor->count || !b->scan_mapping)
@@ -525,6 +623,9 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
     ud_string logical_connection = {0}, logical_table = {0};
     if (b->kind == SQL_SOURCE)
         status = ud_builtin_source_read_mode(c, b->config, &b->stream_read);
+    if (!status && b->kind == SQL_SOURCE && ud_member(b->config, "tableQuery") &&
+        !ud_member(b->config, "table"))
+        status = UD_SCHEMA;
     if (!status)
         status = ud_json_string(ud_member(b->config, "connection"), &logical_connection);
     if (!status)
@@ -540,9 +641,10 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
         if (!status)
             status = ud_connection_lease_schema(b->lease, table, (ud_string){namespace_id, 32},
                                                 &b->actual_schema);
+        int table_query = !status && ud_member(b->config, "tableQuery");
         char *policy = NULL;
         uint32_t length = 0;
-        if (!status && ud_member(b->config, "schemaPolicy"))
+        if (!status && !table_query && ud_member(b->config, "schemaPolicy"))
             status = ud_json_serialize(ud_member(b->config, "schemaPolicy"), &policy, &length);
         else if (!status) {
             policy = ud_strdup_n(c->memory, "{\"policy\":\"strict\"}", 19);
@@ -551,28 +653,35 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
                 status = UD_RESOURCE;
         }
         b->schema_policy = (ud_string){policy, length};
-        uint32_t diff_length = 0;
-        if (!status)
-            status = ud_schema_compare(c->memory, b->schema, b->actual_schema, b->schema_policy,
-                                       &b->schema_diff, &diff_length);
-        ud_json *diff = NULL;
-        if (!status)
-            status = ud_json_parse(c->memory, b->schema_diff, diff_length, &diff, NULL);
-        if (!status) {
-            const char *p = NULL;
-            uint32_t n = 0;
-            status = ud_json_text(ud_member(diff, "compatible"), &p, &n);
-            if (!status && (n != 4 || memcmp(p, "true", 4)))
-                status = UD_INCOMPATIBLE;
-        }
-        if (!status)
-            status = bind_scan(b, diff);
-        ud_json_destroy(diff);
-        if (b->schema_diff) {
-            ud_status recorded =
-                ud_schema_report(c->activation, (ud_string){b->schema_diff, diff_length}, status);
+        if (table_query) {
             if (!status)
-                status = recorded;
+                status = bind_table_query(b);
+            if (!status)
+                status = bind_table_query_sql(b);
+        } else {
+            uint32_t diff_length = 0;
+            if (!status)
+                status = ud_schema_compare(c->memory, b->schema, b->actual_schema, b->schema_policy,
+                                           &b->schema_diff, &diff_length);
+            ud_json *diff = NULL;
+            if (!status)
+                status = ud_json_parse(c->memory, b->schema_diff, diff_length, &diff, NULL);
+            if (!status) {
+                const char *p = NULL;
+                uint32_t n = 0;
+                status = ud_json_text(ud_member(diff, "compatible"), &p, &n);
+                if (!status && (n != 4 || memcmp(p, "true", 4)))
+                    status = UD_INCOMPATIBLE;
+            }
+            if (!status)
+                status = bind_scan(b, diff);
+            ud_json_destroy(diff);
+            if (b->schema_diff) {
+                ud_status recorded = ud_schema_report(
+                    c->activation, (ud_string){b->schema_diff, diff_length}, status);
+                if (!status)
+                    status = recorded;
+            }
         }
     } else if (!status && ud_member(b->config, "schemaPolicy"))
         status = UD_SCHEMA;
@@ -596,7 +705,10 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
         if (!status && b->cursor && (ud_transaction_active(c->activation)))
             status = UD_UNSUPPORTED;
     }
-    if (!status && b->kind == SQL_SOURCE)
+    if (!status && b->kind == SQL_SOURCE && ud_member(b->config, "tableQuery")) {
+        if (ud_member(b->config, "incremental"))
+            status = UD_UNSUPPORTED;
+    } else if (!status && b->kind == SQL_SOURCE)
         status = bind_predicate(b);
     if (!status && b->kind == SQL_SOURCE && b->stream_read && b->read_sql.length)
         status = ud_sql_validate_read_query(b->read_sql);

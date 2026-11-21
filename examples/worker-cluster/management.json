@@ -1,5 +1,5 @@
 {
-  "node": "management-linux",
+  "node": "active",
   "urls": "https://0.0.0.0:5443",
   "policy": "/etc/universaldata/management-policy.json",
   "worker-supervisor-config": "/etc/universaldata/worker-supervisor.json",
@@ -8,12 +8,16 @@
     "EncryptionKeyFile": "/run/secrets/universaldata-catalog-key"
   },
   "WorkerNodes": {
-    "etl-node-a": {
-      "CertificateSha256": "REPLACE_WITH_AGENT_CERTIFICATE_SHA256",
+    "worker-1": {
+      "CertificateSha256": "REPLACE_WITH_WORKER_1_CERTIFICATE_SHA256",
       "Tenants": ["data-platform"]
     },
-    "etl-node-b": {
-      "CertificateSha256": "REPLACE_WITH_AGENT_CERTIFICATE_SHA256",
+    "worker-2": {
+      "CertificateSha256": "REPLACE_WITH_WORKER_2_CERTIFICATE_SHA256",
+      "Tenants": ["data-platform"]
+    },
+    "worker-3": {
+      "CertificateSha256": "REPLACE_WITH_WORKER_3_CERTIFICATE_SHA256",
       "Tenants": ["data-platform"]
     }
   }

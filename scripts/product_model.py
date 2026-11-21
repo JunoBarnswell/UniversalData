@@ -20,6 +20,9 @@ def read_model():
     if (model["product"]["abiVersion"] != model["product"]["protocolVersion"]
             or not 0 < model["product"]["abiVersion"] <= 4294967295):
         raise ValueError("ABI and all protocol epochs must be one positive uint32 version.")
+    target_framework = model["product"].get("dotnetTargetFramework")
+    if not isinstance(target_framework, str) or not re.fullmatch(r"net\d+\.0", target_framework):
+        raise ValueError("The product model requires one authoritative .NET target framework.")
     for key in ("goals", "gates"):
         identifiers = [item["id"] for item in model[key]]
         if len(identifiers) != len(set(identifiers)):
@@ -46,6 +49,7 @@ def encoded(value):
 def projections(model):
     product = model["product"]
     version, abi, protocol = product["sdkVersion"], product["abiVersion"], product["protocolVersion"]
+    target_framework = product["dotnetTargetFramework"]
     marker = "metadata/product.json"
     history = model["history"]
     native_types = re.findall(r"UD_(\w+)\s*=\s*(\d+)",
@@ -167,6 +171,7 @@ def projections(model):
         "include/ud/version.h": header,
         "metadata/ProductVersion.props": '<!-- Generated from metadata/product.json. -->\n'
             '<Project>\n  <PropertyGroup>\n    <UDSdkVersion>' + version + '</UDSdkVersion>\n'
+            '    <UDDotnetTargetFramework>' + target_framework + '</UDDotnetTargetFramework>\n'
             + ''.join(f'    <UD{package.replace(".", "")}Version>{value}</UD{package.replace(".", "")}Version>\n'
                       for package, value in product["dotnetPackages"].items())
             + '  </PropertyGroup>\n</Project>\n',
