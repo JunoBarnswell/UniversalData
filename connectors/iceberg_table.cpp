@@ -1,5 +1,6 @@
 #include "iceberg_table.h"
 #include "iceberg_changes.h"
+#include "iceberg_partition.h"
 
 #include "ud/data.h"
 #include "ud/memory.h"
@@ -13,12 +14,15 @@
 #include "iceberg/iceberg_bundle_export.h"
 #include "iceberg/location_provider.h"
 #include "iceberg/manifest/manifest_entry.h"
+#include "iceberg/manifest/manifest_reader.h"
 #include "iceberg/avro/avro_register.h"
 #include "iceberg/parquet/parquet_register.h"
+#include "iceberg/expression/expressions.h"
 #include "iceberg/partition_spec.h"
 #include "iceberg/row/partition_values.h"
 #include "iceberg/sort_order.h"
 #include "iceberg/schema.h"
+#include "iceberg/snapshot.h"
 #include "iceberg/table_requirement.h"
 #include "iceberg/table_update.h"
 #include "iceberg/table.h"
@@ -903,7 +907,8 @@ static std::optional<ud_status> snapshot_receipt(const ud_iceberg_table* table,
     return std::nullopt;
 }
 
-static std::string operation_file_name(const ud_iceberg_table* table, std::string_view suffix) {
+static std::string operation_file_name(const ud_iceberg_table* table, std::string_view suffix,
+                                       std::string_view group = {}) {
     std::string token = table->commit_identity;
     if (token.empty()) token = table->commit_digest;
     if (token.empty())
@@ -913,7 +918,9 @@ static std::string operation_file_name(const ud_iceberg_table* table, std::strin
         if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
               (c >= '0' && c <= '9') || c == '-' || c == '_'))
             c = '_';
-    return "ud-" + token + "-" + std::string(suffix) + ".parquet";
+    std::string name = "ud-" + token;
+    if (!group.empty()) name += "-" + std::string(group);
+    return name + "-" + std::string(suffix) + ".parquet";
 }
 
 static Result<ud_batch *> select_rows(ud_iceberg_table* table, const ud_batch* source,
@@ -955,6 +962,36 @@ static Result<ud_batch *> select_rows(ud_iceberg_table* table, const ud_batch* s
         ud_batch_destroy(output);
         return std::unexpected(iceberg::Error{iceberg::ErrorKind::kInvalidSchema,
                                                "Cannot seal selected Iceberg rows"});
+    }
+    return output;
+}
+
+static Result<ud_batch *> select_ordinals(ud_iceberg_table* table, const ud_batch* source,
+                                          std::span<const uint32_t> ordinals) {
+    if (!table || !source) return iceberg::InvalidArgument("Iceberg row selection is missing");
+    std::vector<ud_field> fields(ud_batch_columns(source));
+    for (uint32_t column = 0; column < fields.size(); ++column)
+        if (ud_batch_field(source, column, &fields[column]) != UD_OK)
+            return iceberg::InvalidSchema("Invalid Iceberg input field");
+    ud_batch* output = nullptr;
+    auto status = ud_batch_create(table->options.memory, fields.data(),
+                                  static_cast<uint32_t>(fields.size()),
+                                  static_cast<uint32_t>(ordinals.size()), &output);
+    if (status) return iceberg::InvalidSchema("Cannot create Iceberg row selection");
+    for (uint32_t row : ordinals) {
+        status = ud_batch_append_from(output, source, row);
+        if (!status) {
+            ud_row_info info{};
+            if (!ud_batch_row_info(source, row, &info))
+                status = ud_batch_set_row_info(output, ud_batch_rows(output) - 1, &info);
+        }
+        if (status) break;
+    }
+    if (!status) status = ud_batch_seal(output);
+    if (status) {
+        ud_batch_destroy(output);
+        return std::unexpected(iceberg::Error{iceberg::ErrorKind::kInvalidSchema,
+                                               "Cannot copy selected Iceberg rows"});
     }
     return output;
 }
@@ -1006,12 +1043,15 @@ static Result<std::vector<uint32_t>> key_columns(const ud_batch* source,
 
 static Result<std::shared_ptr<iceberg::DataFile>> write_data_file(
     ud_iceberg_table* table, const ud_batch* rows, const std::shared_ptr<iceberg::Schema>& schema,
-    const std::shared_ptr<iceberg::PartitionSpec>& spec, const std::string& name) {
+    const std::shared_ptr<iceberg::PartitionSpec>& spec,
+    const iceberg::PartitionValues& partition, const std::string& name) {
     if (!rows || ud_batch_rows(rows) == 0) return std::unexpected(iceberg::InvalidArgument("Iceberg data file is empty").error());
     auto location = table->table->location_provider();
     if (!location.has_value()) return std::unexpected(location.error());
-    iceberg::DataWriterOptions options{.path = (*location)->NewDataLocation(name), .schema = schema,
-                                       .spec = spec, .partition = iceberg::PartitionValues{},
+    auto path = (*location)->NewDataLocation(*spec, partition, name);
+    if (!path.has_value()) return std::unexpected(path.error());
+    iceberg::DataWriterOptions options{.path = *path, .schema = schema,
+                                       .spec = spec, .partition = partition,
                                        .format = iceberg::FileFormatType::kParquet, .io = table->table->io(),
                                        .sort_order_id = std::nullopt, .properties = {}};
     auto writer = iceberg::DataWriter::Make(options);
@@ -1038,12 +1078,14 @@ static Result<std::shared_ptr<iceberg::DataFile>> write_data_file(
 static Result<std::shared_ptr<iceberg::DataFile>> write_delete_file(
     ud_iceberg_table* table, const ud_batch* rows, const std::vector<int32_t>& key_ids,
     const std::shared_ptr<iceberg::Schema>& key_schema, const std::shared_ptr<iceberg::PartitionSpec>& spec,
-    const std::string& name) {
+    const iceberg::PartitionValues& partition, const std::string& name) {
     if (!rows || ud_batch_rows(rows) == 0) return std::unexpected(iceberg::InvalidArgument("Iceberg delete file is empty").error());
     auto location = table->table->location_provider();
     if (!location.has_value()) return std::unexpected(location.error());
-    iceberg::EqualityDeleteWriterOptions options{.path = (*location)->NewDataLocation(name), .schema = key_schema,
-        .spec = spec, .partition = iceberg::PartitionValues{}, .format = iceberg::FileFormatType::kParquet,
+    auto path = (*location)->NewDataLocation(*spec, partition, name);
+    if (!path.has_value()) return std::unexpected(path.error());
+    iceberg::EqualityDeleteWriterOptions options{.path = *path, .schema = key_schema,
+        .spec = spec, .partition = partition, .format = iceberg::FileFormatType::kParquet,
         .io = table->table->io(), .equality_field_ids = key_ids, .sort_order_id = std::nullopt,
         .properties = {}};
     auto writer = iceberg::EqualityDeleteWriter::Make(options);
@@ -1113,31 +1155,347 @@ static ud_status map_catalog_error(ud_iceberg_table* table, const iceberg::Error
     return map_error(error);
 }
 
-static ud_status commit_append(ud_iceberg_table* table, const std::shared_ptr<iceberg::DataFile>& data,
+static ud_status commit_append(ud_iceberg_table* table,
+                               const std::vector<std::shared_ptr<iceberg::DataFile>>& data,
                                std::string_view identity, std::string_view digest) {
     auto append = table->table->NewFastAppend();
     if (!append.has_value()) return map_error(append.error());
     if (!identity.empty()) append->get()->Set("universaldata.commit.id", std::string(identity));
     if (!digest.empty()) append->get()->Set("universaldata.commit.digest", std::string(digest));
-    append->get()->AppendFile(data);
+    for (const auto& file : data) append->get()->AppendFile(file);
     auto status = append->get()->Commit();
     if (!status.has_value()) return map_catalog_error(table, status.error());
     return refresh_table(table);
 }
 
 static ud_status commit_delta(ud_iceberg_table* table,
-                              const std::shared_ptr<iceberg::DataFile>& data,
-                              const std::shared_ptr<iceberg::DataFile>& deletes,
-                              std::string_view identity, std::string_view digest) {
+                              const std::vector<std::shared_ptr<iceberg::DataFile>>& data,
+                              const std::vector<std::shared_ptr<iceberg::DataFile>>& deletes,
+                              std::string_view identity, std::string_view digest,
+                              std::optional<int64_t> starting_snapshot = std::nullopt,
+                              const std::shared_ptr<iceberg::Expression>& conflict_filter = nullptr,
+                              bool validate_delete_files = false) {
     auto delta = table->table->NewRowDelta();
     if (!delta.has_value()) return map_error(delta.error());
+    /* Equality-delete locations were resolved against this snapshot. Keep
+     * RowDelta's retry/rebase anchored to the same read and validate only
+     * files that can contain the selected keys. */
+    if (starting_snapshot) delta->get()->ValidateFromSnapshot(*starting_snapshot);
+    if (conflict_filter) {
+        delta->get()->ConflictDetectionFilter(conflict_filter);
+        delta->get()->ValidateNoConflictingDataFiles();
+        if (validate_delete_files) delta->get()->ValidateNoConflictingDeleteFiles();
+    }
     if (!identity.empty()) delta->get()->Set("universaldata.commit.id", std::string(identity));
     if (!digest.empty()) delta->get()->Set("universaldata.commit.digest", std::string(digest));
-    if (data) delta->get()->AddRows(data);
-    if (deletes) delta->get()->AddDeletes(deletes);
+    for (const auto& file : data) delta->get()->AddRows(file);
+    for (const auto& file : deletes) delta->get()->AddDeletes(file);
     auto status = delta->get()->Commit();
     if (!status.has_value()) return map_catalog_error(table, status.error());
     return refresh_table(table);
+}
+
+struct ExistingRowLocation {
+    std::shared_ptr<iceberg::PartitionSpec> spec;
+    iceberg::PartitionValues partition;
+};
+
+static Result<std::unordered_map<std::string, std::shared_ptr<iceberg::PartitionSpec>>>
+live_data_specs(ud_iceberg_table* table, int64_t snapshot_id) {
+    std::unordered_map<std::string, std::shared_ptr<iceberg::PartitionSpec>> result;
+    auto snapshot = table->table->SnapshotById(snapshot_id);
+    if (!snapshot.has_value()) return std::unexpected(snapshot.error());
+    auto schema = table->table->schema();
+    if (!schema.has_value()) return std::unexpected(schema.error());
+    iceberg::TableMetadataCache cache(table->table->metadata().get());
+    auto specs = cache.GetPartitionSpecsById();
+    if (!specs.has_value()) return std::unexpected(specs.error());
+    iceberg::SnapshotReader snapshot_reader((*snapshot).get());
+    auto manifests = snapshot_reader.DataManifests(table->table->io());
+    if (!manifests.has_value()) return std::unexpected(manifests.error());
+    for (const auto& manifest : *manifests) {
+        auto reader = iceberg::ManifestReader::Make(manifest, table->table->io(), *schema,
+                                                     specs->get());
+        if (!reader.has_value()) return std::unexpected(reader.error());
+        auto entries = reader->get()->LiveEntries();
+        if (!entries.has_value()) return std::unexpected(entries.error());
+        for (const auto& entry : *entries) {
+            if (!entry.data_file || entry.data_file->content != iceberg::DataFile::Content::kData)
+                continue;
+            auto spec = specs->get().find(manifest.partition_spec_id);
+            if (spec == specs->get().end()) return iceberg::InvalidSchema("Iceberg manifest spec is missing");
+            result[entry.data_file->file_path] = spec->second;
+        }
+    }
+    return result;
+}
+
+static bool same_key(const ud_batch* left, uint32_t left_row,
+                     const std::vector<uint32_t>& left_columns,
+                     const ud_batch* right, uint32_t right_row,
+                     const std::vector<uint32_t>& right_columns) {
+    for (size_t i = 0; i < left_columns.size(); ++i) {
+        ud_value left_value{}, right_value{};
+        if (ud_batch_get(left, left_row, left_columns[i], &left_value) != UD_OK ||
+            ud_batch_get(right, right_row, right_columns[i], &right_value) != UD_OK ||
+            left_value.is_null || right_value.is_null ||
+            ud_value_compare(&left_value, &right_value) != 0)
+            return false;
+    }
+    return true;
+}
+
+static Result<uint64_t> hash_key(const ud_batch* batch, uint32_t row,
+                                 const std::vector<uint32_t>& columns) {
+    if (!batch || row >= ud_batch_rows(batch))
+        return iceberg::InvalidArgument("Iceberg key row is invalid");
+    uint64_t hash = UD_VALUE_HASH_SEED;
+    for (uint32_t column : columns) {
+        ud_value value{};
+        if (ud_batch_get(batch, row, column, &value) != UD_OK)
+            return iceberg::InvalidArrowData("Iceberg key value cannot be read");
+        hash = ud_value_hash(&value, hash);
+    }
+    return hash;
+}
+
+static Result<std::shared_ptr<iceberg::Expression>> key_conflict_filter(
+    const ud_batch* source, const std::vector<int32_t>& key_ids,
+    const std::vector<uint32_t>& source_columns,
+    std::span<const uint8_t> selected, const std::shared_ptr<iceberg::Schema>& schema) {
+    if (!source || !schema || selected.size() != ud_batch_rows(source))
+        return iceberg::InvalidArgument("Iceberg conflict filter input is invalid");
+    std::shared_ptr<iceberg::Expression> filter;
+    for (size_t key = 0; key < key_ids.size(); ++key) {
+        auto field = schema->FindFieldById(key_ids[key]);
+        if (!field.has_value()) return std::unexpected(field.error());
+        if (!field->has_value()) return iceberg::InvalidSchema("Iceberg conflict key is absent");
+        const auto& schema_field = field->value().get();
+        std::vector<iceberg::Literal> values;
+        values.reserve(ud_batch_rows(source));
+        for (uint32_t row = 0; row < ud_batch_rows(source); ++row) {
+            if (!selected[row]) continue;
+            ud_value value{};
+            if (ud_batch_get(source, row, source_columns[key], &value) != UD_OK)
+                return iceberg::InvalidArrowData("Iceberg conflict key cannot be read");
+            auto literal = ud_iceberg_partition::literal(value, schema_field.type());
+            if (!literal.has_value()) return std::unexpected(literal.error());
+            values.push_back(std::move(*literal));
+        }
+        if (values.empty()) continue;
+        auto predicate = iceberg::Expressions::In(std::string(schema_field.name()), std::move(values));
+        std::shared_ptr<iceberg::Expression> field_filter = predicate;
+        filter = filter ? iceberg::Expressions::And(std::move(filter), std::move(field_filter))
+                        : std::move(field_filter);
+    }
+    return filter;
+}
+
+static Result<std::vector<std::vector<ExistingRowLocation>>> locate_existing_rows(
+    ud_iceberg_table* table, const ud_batch* source, const std::vector<int32_t>& key_ids,
+    const std::vector<uint32_t>& source_columns,
+    std::span<const uint8_t> selected, int64_t snapshot_id,
+    const std::shared_ptr<iceberg::Expression>& key_filter) {
+    if (!source || selected.size() != ud_batch_rows(source))
+        return iceberg::InvalidArgument("Iceberg old-row selection is invalid");
+    std::vector<std::vector<ExistingRowLocation>> locations(ud_batch_rows(source));
+    bool pending = false;
+    for (uint8_t value : selected) pending = pending || value != 0;
+    if (!pending) return locations;
+    std::unordered_multimap<uint64_t, uint32_t> candidates;
+    uint32_t selected_count = 0;
+    for (uint8_t value : selected) selected_count += value != 0;
+    candidates.reserve(selected_count);
+    for (uint32_t row = 0; row < ud_batch_rows(source); ++row) {
+        if (!selected[row]) continue;
+        auto hash = hash_key(source, row, source_columns);
+        if (!hash.has_value()) return std::unexpected(hash.error());
+        candidates.emplace(*hash, row);
+    }
+    auto specs = live_data_specs(table, snapshot_id);
+    if (!specs.has_value()) return std::unexpected(specs.error());
+    auto builder = table->table->NewScan();
+    if (!builder.has_value()) return std::unexpected(builder.error());
+    builder->get()->UseSnapshot(snapshot_id);
+    if (key_filter) builder->get()->Filter(key_filter);
+    auto scan = builder->get()->Build();
+    if (!scan.has_value()) return std::unexpected(scan.error());
+    auto tasks = scan->get()->PlanFiles();
+    if (!tasks.has_value()) return std::unexpected(tasks.error());
+    auto schema = table->table->schema();
+    if (!schema.has_value()) return std::unexpected(schema.error());
+    auto key_projection = (*schema)->Project(
+        std::unordered_set<int32_t>(key_ids.begin(), key_ids.end()));
+    if (!key_projection.has_value()) return std::unexpected(key_projection.error());
+    auto projected_schema = std::shared_ptr<iceberg::Schema>(std::move(*key_projection));
+    const auto projected_fields = projected_schema->fields();
+    std::vector<uint32_t> imported_columns, projected_columns;
+    std::vector<ud_field> key_fields;
+    for (int32_t id : key_ids) {
+        auto field_by_id = std::ranges::find_if(projected_fields, [id](const auto& field) {
+            return field.field_id() == id;
+        });
+        if (field_by_id == projected_fields.end()) return iceberg::InvalidSchema("Iceberg projected key is absent");
+        imported_columns.push_back(static_cast<uint32_t>(field_by_id - projected_fields.begin()));
+        projected_columns.push_back(static_cast<uint32_t>(projected_columns.size()));
+        bool found = false;
+        for (uint32_t column = 0; column < ud_batch_columns(table->table_schema_ud); ++column) {
+            ud_field field{};
+            if (ud_batch_field(table->table_schema_ud, column, &field) != UD_OK)
+                return iceberg::InvalidSchema("Invalid Iceberg key field");
+            if (field_id_from_ud(field) == id) {
+                key_fields.push_back(field);
+                found = true;
+                break;
+            }
+        }
+        if (!found) return iceberg::InvalidSchema("Iceberg scan key is absent");
+    }
+    iceberg::FileScanTaskReader::Options reader_options{.io = table->table->io(),
+        .table_schema = *schema, .schemas = {}, .projected_schema = projected_schema,
+        .name_mapping = nullptr, .properties = {}};
+    auto reader = iceberg::FileScanTaskReader::Make(std::move(reader_options));
+    if (!reader.has_value()) return std::unexpected(reader.error());
+    for (const auto& task : *tasks) {
+        if (!task || !task->data_file()) continue;
+        auto spec = specs->find(task->data_file()->file_path);
+        if (spec == specs->end()) return iceberg::InvalidSchema("Iceberg data-file spec is missing");
+        auto stream = reader->get()->Open(*task);
+        if (!stream.has_value()) return std::unexpected(stream.error());
+        ArrowArrayStream arrow = std::move(*stream);
+        ArrowSchema arrow_schema{};
+        std::vector<uint8_t> matched_source_rows(ud_batch_rows(source), 0);
+        if (!arrow.get_schema || arrow.get_schema(&arrow, &arrow_schema)) {
+            if (arrow.release) arrow.release(&arrow);
+            return iceberg::InvalidArrowData("Iceberg old-row schema cannot be read");
+        }
+        while (true) {
+            ArrowArray array{};
+            if (!arrow.get_next || arrow.get_next(&arrow, &array)) {
+                if (array.release) array.release(&array);
+                if (arrow_schema.release) arrow_schema.release(&arrow_schema);
+                if (arrow.release) arrow.release(&arrow);
+                return iceberg::InvalidArrowData("Iceberg old-row batch cannot be read");
+            }
+            if (!array.release) break;
+            ud_batch* rows = nullptr;
+            ud_status imported = ud_batch_import_arrow(table->options.memory, &array, &arrow_schema, &rows);
+            array.release(&array);
+            if (imported || !rows || ud_batch_seal(rows) != UD_OK) {
+                ud_batch_destroy(rows);
+                if (arrow_schema.release) arrow_schema.release(&arrow_schema);
+                if (arrow.release) arrow.release(&arrow);
+                return iceberg::InvalidArrowData("Iceberg old-row batch import failed");
+            }
+            ud_batch* projected = nullptr;
+            if (ud_batch_project(table->options.memory, rows, imported_columns.data(),
+                                 key_fields.data(), static_cast<uint32_t>(key_fields.size()),
+                                 &projected) != UD_OK) {
+                ud_batch_destroy(rows);
+                if (arrow_schema.release) arrow_schema.release(&arrow_schema);
+                if (arrow.release) arrow.release(&arrow);
+                return iceberg::InvalidSchema("Iceberg old-row projection failed");
+            }
+            ud_batch_destroy(rows);
+            rows = projected;
+            for (uint32_t scan_row = 0; scan_row < ud_batch_rows(rows); ++scan_row) {
+                auto hash = hash_key(rows, scan_row, projected_columns);
+                if (!hash.has_value()) {
+                    ud_batch_destroy(rows);
+                    if (arrow_schema.release) arrow_schema.release(&arrow_schema);
+                    if (arrow.release) arrow.release(&arrow);
+                    return std::unexpected(hash.error());
+                }
+                const auto range = candidates.equal_range(*hash);
+                for (auto candidate = range.first; candidate != range.second; ++candidate) {
+                    const uint32_t source_row = candidate->second;
+                    if (matched_source_rows[source_row] ||
+                        !same_key(source, source_row, source_columns, rows, scan_row,
+                                  projected_columns))
+                        continue;
+                    matched_source_rows[source_row] = 1;
+                    locations[source_row].push_back(
+                        ExistingRowLocation{spec->second, task->data_file()->partition});
+                }
+            }
+            ud_batch_destroy(rows);
+        }
+        if (arrow_schema.release) arrow_schema.release(&arrow_schema);
+        if (arrow.release) arrow.release(&arrow);
+    }
+    return locations;
+}
+
+struct DeletePlan {
+    std::vector<ud_iceberg_partition::Group> groups;
+    std::vector<uint32_t> source_keys;
+    std::shared_ptr<iceberg::Schema> key_schema;
+    std::vector<ud_field> key_fields;
+    std::shared_ptr<iceberg::Expression> conflict_filter;
+    bool validate_delete_files = false;
+};
+
+static Result<DeletePlan> plan_delete_files(
+    ud_iceberg_table* table, const ud_batch* source, const std::vector<int32_t>& key_ids,
+    std::vector<uint32_t> source_columns,
+    std::span<const uint8_t> selected, const std::shared_ptr<iceberg::Schema>& table_schema,
+    const std::shared_ptr<iceberg::PartitionSpec>& spec, bool validate_delete_files,
+    std::optional<int64_t> snapshot_id) {
+    DeletePlan plan;
+    plan.source_keys = std::move(source_columns);
+    auto conflict_filter = key_conflict_filter(source, key_ids, plan.source_keys, selected, table_schema);
+    if (!conflict_filter.has_value()) return std::unexpected(conflict_filter.error());
+    plan.conflict_filter = std::move(*conflict_filter);
+    const auto metadata = table->table->metadata();
+    const bool default_unpartitioned_only =
+        spec->IsUnpartitioned() && metadata && metadata->partition_specs.size() == 1;
+    std::vector<std::vector<ExistingRowLocation>> locations;
+    if (snapshot_id && !default_unpartitioned_only) {
+        auto found = locate_existing_rows(table, source, key_ids, plan.source_keys,
+                                         selected, *snapshot_id, plan.conflict_filter);
+        if (!found.has_value()) return std::unexpected(found.error());
+        locations = std::move(*found);
+    } else {
+        locations.resize(ud_batch_rows(source));
+    }
+    for (int32_t id : key_ids) {
+        for (uint32_t column = 0; column < ud_batch_columns(table->table_schema_ud); ++column) {
+            ud_field field{};
+            if (ud_batch_field(table->table_schema_ud, column, &field) != UD_OK) continue;
+            if (field_id_from_ud(field) == id) { plan.key_fields.push_back(field); break; }
+        }
+    }
+    auto key_schema = table_schema->Project(
+        std::unordered_set<int32_t>(key_ids.begin(), key_ids.end()));
+    if (!key_schema.has_value()) return std::unexpected(key_schema.error());
+    plan.key_schema = std::shared_ptr<iceberg::Schema>(std::move(*key_schema));
+    plan.validate_delete_files = validate_delete_files;
+    std::unordered_map<iceberg::PartitionKey, size_t, iceberg::PartitionKeyHash,
+                       iceberg::PartitionKeyEqual> indexes;
+    indexes.reserve(ud_batch_rows(source));
+    for (uint32_t row = 0; row < ud_batch_rows(source); ++row) {
+        if (!selected[row]) continue;
+        if (locations[row].empty()) {
+            auto values = ud_iceberg_partition::values_for_row(source, row, table_schema, spec);
+            if (!values.has_value()) return std::unexpected(values.error());
+            locations[row].push_back(ExistingRowLocation{spec, std::move(*values)});
+        }
+        for (const auto& location : locations[row]) {
+            iceberg::PartitionKey key{location.spec->spec_id(), location.partition};
+            auto found = indexes.find(key);
+            if (found == indexes.end()) {
+                ud_iceberg_partition::Group group;
+                group.spec = location.spec;
+                group.partition = location.partition;
+                group.rows.push_back(row);
+                indexes.emplace(std::move(key), plan.groups.size());
+                plan.groups.push_back(std::move(group));
+            } else {
+                plan.groups[found->second].rows.push_back(row);
+            }
+        }
+    }
+    return plan;
 }
 
 static ud_status write_files(ud_iceberg_table* table, const ud_batch* rows,
@@ -1148,7 +1506,6 @@ static ud_status write_files(ud_iceberg_table* table, const ud_batch* rows,
     if (ud_batch_rows(rows) == 0) return UD_OK;
     auto spec = table->table->spec();
     if (!spec.has_value()) return map_error(spec.error());
-    if (!(*spec)->IsUnpartitioned()) return UD_UNSUPPORTED;
     /* Stage filenames from the same operation token before any file is
      * created.  This makes upload-before-commit recovery address the exact
      * staged data/delete paths instead of a fresh clock-based name. */
@@ -1156,30 +1513,22 @@ static ud_status write_files(ud_iceberg_table* table, const ud_batch* rows,
     table->commit_digest.assign(digest);
     auto evolved = evolve_missing_columns(table, rows, identity, digest);
     if (evolved) return evolved;
-    if (replay) {
-        auto location = table->table->location_provider();
-        if (!location.has_value()) return map_error(location.error());
-        const auto remove_staged = [&](std::string_view suffix) -> ud_status {
-            const auto path = (*location)->NewDataLocation(operation_file_name(table, suffix));
-            auto status = table->table->io()->DeleteFile(path);
-            return status.has_value() ? UD_OK : map_error(status.error());
-        };
-        auto status = remove_staged("data");
-        if (status) return status;
-        status = remove_staged("delete");
-        if (status) return status;
-    }
     auto table_schema = table->table->schema();
     if (!table_schema.has_value()) return map_error(table_schema.error());
+    std::optional<int64_t> starting_snapshot_id;
+    const auto current_snapshot_id = table->table->metadata()->current_snapshot_id;
+    if (current_snapshot_id != iceberg::kInvalidSnapshotId) starting_snapshot_id = current_snapshot_id;
     std::vector<uint8_t> insert_rows(ud_batch_rows(rows), 0), delete_rows(ud_batch_rows(rows), 0);
-    bool needs_keys = false;
+    bool needs_keys = false, validate_delete_files = false;
     for (uint32_t row = 0; row < operation_count; ++row) {
         switch (operations ? operations[row] : UD_CHANGE_INSERT) {
         case UD_CHANGE_INSERT: insert_rows[row] = 1; break;
         case UD_CHANGE_UPDATE:
-            insert_rows[row] = 1; delete_rows[row] = 1; needs_keys = true; break;
+            insert_rows[row] = 1; delete_rows[row] = 1; needs_keys = true;
+            validate_delete_files = true; break;
         case UD_CHANGE_UPSERT:
-            insert_rows[row] = 1; delete_rows[row] = 1; needs_keys = true; break;
+            insert_rows[row] = 1; delete_rows[row] = 1; needs_keys = true;
+            validate_delete_files = true; break;
         case UD_CHANGE_DELETE: delete_rows[row] = 1; needs_keys = true; break;
         case UD_CHANGE_TRUNCATE: return UD_UNSUPPORTED;
         default: return UD_SCHEMA;
@@ -1204,48 +1553,141 @@ static ud_status write_files(ud_iceberg_table* table, const ud_batch* rows,
     if (!selected.has_value()) { ud_batch_destroy(*projected); return map_error(selected.error()); }
     insert_batch = *selected;
     ud_batch_destroy(*projected);
-    ud_batch* key_batch = nullptr;
-    std::shared_ptr<iceberg::Schema> key_schema;
+    std::vector<uint8_t> all_insert_rows(ud_batch_rows(insert_batch), 1);
+    auto insert_groups = ud_iceberg_partition::group_rows(insert_batch, *table_schema, *spec,
+                                                           all_insert_rows);
+    if (!insert_groups.has_value()) {
+        ud_batch_destroy(insert_batch);
+        return mapped_native_error(table->options.memory, insert_groups.error());
+    }
+
+    const ud_batch* delete_source = before ? before : rows;
+    DeletePlan delete_plan;
     if (needs_keys) {
-        auto selected_source = select_rows(table, before ? before : rows, delete_rows);
-        if (!selected_source.has_value()) { ud_batch_destroy(insert_batch); return map_error(selected_source.error()); }
-        std::vector<ud_field> key_fields;
-        for (int32_t id : key_ids) {
-            for (uint32_t column = 0; column < ud_batch_columns(table->table_schema_ud); ++column) {
-                ud_field field{};
-                if (ud_batch_field(table->table_schema_ud, column, &field) != UD_OK) continue;
-                if (field_id_from_ud(field) == id) { key_fields.push_back(field); break; }
-            }
+        if (before) {
+            std::vector<int32_t> before_ids;
+            auto keys = key_columns(before, table->table_schema_ud, *table_schema, key_ids, before_ids);
+            if (!keys.has_value()) { ud_batch_destroy(insert_batch); return map_error(keys.error()); }
+            key_ordinals = std::move(*keys);
         }
+        auto planned = plan_delete_files(table, delete_source, key_ids, std::move(key_ordinals), delete_rows,
+                                         *table_schema, *spec, validate_delete_files, starting_snapshot_id);
+        if (!planned.has_value()) {
+            ud_batch_destroy(insert_batch);
+            return mapped_native_error(table->options.memory, planned.error());
+        }
+        delete_plan = std::move(*planned);
+    }
+
+    auto location = table->table->location_provider();
+    if (!location.has_value()) {
+        ud_batch_destroy(insert_batch);
+        return map_error(location.error());
+    }
+    const auto staged_path = [&](const ud_iceberg_partition::Group& group,
+                                 std::string_view suffix) -> Result<std::string> {
+        auto token = ud_iceberg_partition::group_token(group);
+        if (!token.has_value()) return std::unexpected(token.error());
+        const std::string group_name = group.spec->IsUnpartitioned() ? std::string() : *token;
+        return (*location)->NewDataLocation(*group.spec, group.partition,
+                                             operation_file_name(table, suffix, group_name));
+    };
+    if (replay) {
+        const auto remove_staged = [&](const ud_iceberg_partition::Group& group,
+                                       std::string_view suffix) -> ud_status {
+            auto path = staged_path(group, suffix);
+            if (!path.has_value()) return map_error(path.error());
+            auto status = table->table->io()->DeleteFile(*path);
+            return status.has_value() ? UD_OK : map_error(status.error());
+        };
+        for (const auto& group : *insert_groups) {
+            auto status = remove_staged(group, "data");
+            if (status) { ud_batch_destroy(insert_batch); return status; }
+        }
+        for (const auto& group : delete_plan.groups) {
+            auto status = remove_staged(group, "delete");
+            if (status) { ud_batch_destroy(insert_batch); return status; }
+        }
+    }
+
+    std::vector<std::shared_ptr<iceberg::DataFile>> data_files, delete_files;
+    for (const auto& group : *insert_groups) {
+        ud_batch* grouped = nullptr;
+        const bool reuse_insert_batch = group.spec->IsUnpartitioned() &&
+            group.rows.size() == ud_batch_rows(insert_batch);
+        if (reuse_insert_batch) {
+            if (ud_batch_retain(insert_batch) != UD_OK) {
+                ud_batch_destroy(insert_batch);
+                return UD_RESOURCE;
+            }
+            grouped = insert_batch;
+        } else {
+            auto selected = select_ordinals(table, insert_batch, group.rows);
+            if (!selected.has_value()) {
+                ud_batch_destroy(insert_batch);
+                return map_error(selected.error());
+            }
+            grouped = *selected;
+        }
+        auto token = ud_iceberg_partition::group_token(group);
+        if (!token.has_value()) {
+            ud_batch_destroy(grouped);
+            ud_batch_destroy(insert_batch);
+            return map_error(token.error());
+        }
+        const std::string group_name = group.spec->IsUnpartitioned() ? std::string() : *token;
+        auto data = write_data_file(table, grouped, *table_schema, group.spec, group.partition,
+                                    operation_file_name(table, "data", group_name));
+        ud_batch_destroy(grouped);
+        if (!data.has_value()) {
+            ud_batch_destroy(insert_batch);
+            return mapped_native_error(table->options.memory, data.error());
+        }
+        data_files.push_back(*data);
+    }
+    for (const auto& group : delete_plan.groups) {
+        auto selected_source = select_ordinals(table, delete_source, group.rows);
+        if (!selected_source.has_value()) {
+            ud_batch_destroy(insert_batch);
+            return map_error(selected_source.error());
+        }
+        ud_batch* key_batch = nullptr;
         auto key_status = ud_batch_project(table->options.memory, *selected_source,
-                                           key_ordinals.data(), key_fields.data(),
-                                           static_cast<uint32_t>(key_fields.size()), &key_batch);
+                                           delete_plan.source_keys.data(), delete_plan.key_fields.data(),
+                                           static_cast<uint32_t>(delete_plan.key_fields.size()), &key_batch);
         ud_batch_destroy(*selected_source);
-        if (key_status) { ud_batch_destroy(insert_batch); return key_status; }
-        auto key_schema_result = (*table_schema)->Project(std::unordered_set<int32_t>(key_ids.begin(), key_ids.end()));
-        if (!key_schema_result.has_value()) { ud_batch_destroy(key_batch); ud_batch_destroy(insert_batch); return map_error(key_schema_result.error()); }
-        key_schema = std::shared_ptr<iceberg::Schema>(std::move(*key_schema_result));
+        if (key_status) {
+            ud_batch_destroy(insert_batch);
+            return key_status;
+        }
+        auto token = ud_iceberg_partition::group_token(group);
+        if (!token.has_value()) {
+            ud_batch_destroy(key_batch);
+            ud_batch_destroy(insert_batch);
+            return map_error(token.error());
+        }
+        const std::string group_name = group.spec->IsUnpartitioned() ? std::string() : *token;
+        auto deletes = write_delete_file(table, key_batch, key_ids, delete_plan.key_schema, group.spec,
+                                          group.partition,
+                                          operation_file_name(table, "delete", group_name));
+        ud_batch_destroy(key_batch);
+        if (!deletes.has_value()) {
+            ud_batch_destroy(insert_batch);
+            return mapped_native_error(table->options.memory, deletes.error());
+        }
+        delete_files.push_back(*deletes);
     }
-    std::shared_ptr<iceberg::DataFile> data_file;
-    if (ud_batch_rows(insert_batch)) {
-        auto data = write_data_file(table, insert_batch, *table_schema, *spec,
-                                    operation_file_name(table, "data"));
-        if (!data.has_value()) { ud_batch_destroy(key_batch); ud_batch_destroy(insert_batch); return mapped_native_error(table->options.memory, data.error()); }
-        data_file = *data;
-    }
-    std::shared_ptr<iceberg::DataFile> delete_file;
-    if (key_batch && ud_batch_rows(key_batch)) {
-        auto deletes = write_delete_file(table, key_batch, key_ids, key_schema, *spec,
-                                         operation_file_name(table, "delete"));
-        if (!deletes.has_value()) { ud_batch_destroy(key_batch); ud_batch_destroy(insert_batch); return mapped_native_error(table->options.memory, deletes.error()); }
-        delete_file = *deletes;
-    }
-    ud_batch_destroy(key_batch);
     ud_batch_destroy(insert_batch);
     table->catalog->SetCommitToken(table->commit_identity, table->commit_digest);
-    ud_status result = data_file && delete_file ? commit_delta(table, data_file, delete_file, identity, digest)
-                       : data_file ? commit_append(table, data_file, identity, digest)
-                       : delete_file ? commit_delta(table, nullptr, delete_file, identity, digest)
+    ud_status result = !data_files.empty() && !delete_files.empty()
+                       ? commit_delta(table, data_files, delete_files, identity, digest,
+                                      starting_snapshot_id, delete_plan.conflict_filter,
+                                      delete_plan.validate_delete_files)
+                       : !data_files.empty() ? commit_append(table, data_files, identity, digest)
+                       : !delete_files.empty() ? commit_delta(table, {}, delete_files, identity, digest,
+                                                              starting_snapshot_id,
+                                                              delete_plan.conflict_filter,
+                                                              delete_plan.validate_delete_files)
                                      : UD_OK;
     if (result == UD_OK) table->catalog->SetCommitToken({}, {});
     return result;

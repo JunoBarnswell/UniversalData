@@ -196,6 +196,163 @@ def trino_rows(args, namespace, table):
     )]
 
 
+def sql_literal(value):
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def partitioned_table_name(args, namespace, table):
+    return ".".join(quote_identifier(part) for part in
+                      (args.trino_catalog, namespace, table))
+
+
+def create_partitioned_table(args, namespace, table, location):
+    # The table is deliberately created by Trino.  Native create currently
+    # uses Iceberg's unpartitioned policy; this fixture tests the real
+    # consumer path for a table whose partition spec is catalog-owned.
+    qualified = partitioned_table_name(args, namespace, table)
+    trino_query(
+        args.trino,
+        f"CREATE TABLE {qualified} ("
+        "id BIGINT NOT NULL, value VARCHAR NOT NULL, amount BIGINT NOT NULL) "
+        "WITH (format = 'PARQUET', "
+        f"location = {sql_literal(location.as_uri())}, "
+        "partitioning = ARRAY['bucket(id, 2)'])",
+        args.trino_catalog, namespace, args.trino_user, args.trino_password,
+    )
+
+
+def evolve_partitioning(args, namespace, table, transform):
+    qualified = partitioned_table_name(args, namespace, table)
+    trino_query(
+        args.trino,
+        f"ALTER TABLE {qualified} SET PROPERTIES "
+        f"partitioning = ARRAY[{sql_literal(transform)}]",
+        args.trino_catalog, namespace, args.trino_user, args.trino_password,
+    )
+
+
+def partition_specs(metadata):
+    specs = metadata.get("partition-specs") or []
+    assert isinstance(specs, list) and specs, metadata
+    return specs
+
+
+def partition_spec(specs, spec_id):
+    for spec in specs:
+        if int(spec.get("spec-id", -1)) == int(spec_id):
+            return spec
+    raise AssertionError((spec_id, specs))
+
+
+def physical_partition_files(location):
+    files = sorted(location.rglob("*.parquet"))
+    assert files, f"No Parquet data files under the shared warehouse: {location}"
+    directories = {
+        str(path.parent.relative_to(location))
+        for path in files
+        if any("=" in part for part in path.relative_to(location).parts[:-1])
+    }
+    assert directories, (location, [str(path) for path in files])
+    return files, directories
+
+
+def partitioned_regression(args, root, plugin, catalog, storage, namespace):
+    """Exercise Native writes against real Trino-created/evolved partitions."""
+    case = root / "partitioned"
+    case.mkdir()
+    source_files = case / "files"
+    source_files.mkdir()
+    source_db = source_files / "source.db"
+    table = "partitioned_orders"
+    table_location = storage / namespace / table
+    table_location.mkdir(parents=True, exist_ok=True)
+    create_partitioned_table(args, namespace, table, table_location)
+
+    initial = [(i, f"value-{i}", i * 10) for i in range(1, 17)]
+    create_source(source_db, initial)
+    policy = write_cli_policy(case / "policy", plugin, catalog, storage,
+                              source_db=source_db)
+    append = package_document(plugin, catalog, storage, source_db, namespace, table)
+    run_cli(args, append, policy, case / "append-state", "iceberg-partition-append")
+    assert trino_rows(args, namespace, table) == initial
+    first = catalog_state(catalog, namespace, table, storage,
+                          args.catalog_user, args.catalog_password)
+    first_specs = partition_specs(first["metadata"])
+    first_spec_id = int(first["metadata"]["default-spec-id"])
+    first_spec = partition_spec(first_specs, first_spec_id)
+    assert any("bucket[2]" in str(field.get("transform"))
+               for field in first_spec.get("fields", [])), first_specs
+    files, directories = physical_partition_files(table_location)
+    assert len(directories) >= 2, directories
+    assert any(f"-s{first_spec_id}-" in path.name for path in files), files
+
+    # Keep most rows in the original spec, while moving two existing rows and
+    # one new row into the evolved spec.  The renamed value column proves the
+    # write still maps by Iceberg field ID.
+    evolve_partitioning(args, namespace, table, "bucket(id, 4)")
+    evolved = catalog_state(catalog, namespace, table, storage,
+                            args.catalog_user, args.catalog_password)
+    evolved_specs = partition_specs(evolved["metadata"])
+    evolved_spec_id = int(evolved["metadata"]["default-spec-id"])
+    assert evolved_spec_id != first_spec_id and len(evolved_specs) >= 2, evolved_specs
+    assert any("bucket[4]" in str(field.get("transform"))
+               for field in partition_spec(evolved_specs, evolved_spec_id).get("fields", [])), evolved_specs
+
+    updates = [(1, "value-1-updated", 1001), (9, "value-9-updated", 1009),
+               (17, "value-17", 170)]
+    update_db = source_files / "update.db"
+    create_source(update_db, updates)
+    update_policy = write_cli_policy(case / "update-policy", plugin, catalog, storage,
+                                     source_db=update_db)
+    upsert = package_document(plugin, catalog, storage, update_db, namespace, table,
+                              mode="upsert", renamed=True)
+    run_cli(args, upsert, update_policy, case / "update-state", "iceberg-partition-upsert")
+    expected = {row[0]: row for row in initial}
+    expected.update({row[0]: row for row in updates})
+    expected_rows = [expected[key] for key in sorted(expected)]
+    assert trino_rows(args, namespace, table) == expected_rows
+    after_upsert = catalog_state(catalog, namespace, table, storage,
+                                 args.catalog_user, args.catalog_password)
+    assert int(after_upsert["metadata"]["default-spec-id"]) == evolved_spec_id
+    files, _ = physical_partition_files(table_location)
+    assert any(f"-s{evolved_spec_id}-" in path.name for path in files), files
+
+    # A second catalog-owned evolution leaves the table with multiple physical
+    # specs.  The Iceberg component currently exposes append/upsert/changeset;
+    # a SQL source has insert row metadata only, so standalone ``delete`` is an
+    # explicit schema rejection rather than a silently misclassified append.
+    evolve_partitioning(args, namespace, table, "bucket(id, 8)")
+    latest = catalog_state(catalog, namespace, table, storage,
+                           args.catalog_user, args.catalog_password)
+    latest_specs = partition_specs(latest["metadata"])
+    latest_spec_id = int(latest["metadata"]["default-spec-id"])
+    assert latest_spec_id != evolved_spec_id and len(latest_specs) >= 3, latest_specs
+    assert any("bucket[8]" in str(field.get("transform"))
+               for field in partition_spec(latest_specs, latest_spec_id).get("fields", [])), latest_specs
+
+    delete_db = source_files / "delete.db"
+    create_source(delete_db, [(2, "value-2", 20), (9, "value-9-updated", 1009)])
+    delete_policy = write_cli_policy(case / "delete-policy", plugin, catalog, storage,
+                                     source_db=delete_db)
+    delete = package_document(plugin, catalog, storage, delete_db, namespace, table,
+                              mode="delete")
+    files_before_rejected_delete, _ = physical_partition_files(table_location)
+    run_cli(args, delete, delete_policy, case / "delete-state", "iceberg-partition-delete",
+            expected_status=5)
+    assert trino_rows(args, namespace, table) == expected_rows
+    files_after_rejected_delete, _ = physical_partition_files(table_location)
+    assert files_after_rejected_delete == files_before_rejected_delete
+    print(
+        "Iceberg partition slice passed: Trino REST-created bucket[2] table, "
+        "Native physical partition append, catalog-owned bucket evolution, "
+        "field-ID upsert across old/new specs. Standalone SQL delete is explicitly "
+        "rejected (status 5); equality deletes remain available through changeset/CDC "
+        "row metadata. Still unclaimed: Native partitioned-table creation, object-store "
+        "credentials, compaction, and snapshot expiration/maintenance.",
+        flush=True,
+    )
+
+
 def quote_identifier(value):
     return '"' + value.replace('"', '""') + '"'
 
@@ -324,6 +481,11 @@ def run_cli(args, package, policy, state, execution_id, resume=False, expected_s
     if resume:
         command.append("resume")
     result = subprocess.run(command, capture_output=True, text=True, timeout=180)
+    if expected_status and not result.stdout:
+        diagnostic = json.loads(result.stderr)
+        assert result.returncode == expected_status and diagnostic.get("code") == expected_status, (
+            result.returncode, result.stdout, result.stderr)
+        return {"result": expected_status}
     assert result.returncode == int(expected_status != 0), (result.returncode, result.stdout, result.stderr)
     facts = json.loads(result.stdout)
     assert facts.get("result") == expected_status, (facts, result.stderr)
@@ -546,6 +708,7 @@ def main():
                     "iceberg-source-history")
             assert sqlite_rows(sink_history, "sink_rows") == [(1, "alpha", 10), (2, "beta", 20)]
             resume_pinned_source(args, root, files, storage_case, namespace, table, expected)
+            partitioned_regression(args, root, args.sqlite, args.catalog, storage_case, namespace)
 
             crash_boundary(args, root, args.sqlite, args.catalog, storage_case,
                            crash_namespace + "_before", "append_before", [(1, "one", 1), (2, "two", 2)],
