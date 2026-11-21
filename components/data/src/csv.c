@@ -670,6 +670,7 @@ struct ud_csv_writer {
     FILE *file;
     ud_batch *schema;
     csv_layout layout;
+    ud_bytes delimiter, qualifier;
     uint32_t columns, max_record_bytes;
 };
 static ud_status csv_field(ud_csv_writer *writer, ud_bytes *record, uint32_t physical,
@@ -689,38 +690,38 @@ static ud_status csv_field(ud_csv_writer *writer, ud_bytes *record, uint32_t phy
             UD_TRY(ud_bytes_put(record, " ", 1));
         return UD_OK;
     }
+    const ud_bytes *delimiter = &writer->delimiter, *qualifier = &writer->qualifier;
     if (physical)
-        UD_TRY(ud_text_utf8(record, layout->delimiter));
-    ud_bytes delimiter = {.ctx = writer->ctx}, qualifier = {.ctx = writer->ctx};
-    ud_status status = ud_text_utf8(&delimiter, layout->delimiter);
-    if (!status && layout->qualifier)
-        status = ud_text_utf8(&qualifier, layout->qualifier);
+        UD_TRY(ud_bytes_put(record, delimiter->data, delimiter->size));
     int quoted = 0;
-    for (uint32_t at = 0; !status && at < size; at++)
+    for (uint32_t at = 0; at < size; at++) {
         if (text[at] == '\n' || text[at] == '\r' ||
-            (at + delimiter.size <= size && !memcmp(text + at, delimiter.data, delimiter.size)) ||
-            (qualifier.size && at + qualifier.size <= size &&
-             !memcmp(text + at, qualifier.data, qualifier.size)))
+            (delimiter->size <= size - at && !memcmp(text + at, delimiter->data, delimiter->size)) ||
+            (qualifier->size && qualifier->size <= size - at &&
+             !memcmp(text + at, qualifier->data, qualifier->size))) {
             quoted = 1;
-    if (!status && quoted && !qualifier.size)
-        status = UD_TRUNCATED;
-    if (!status && quoted)
-        status = ud_bytes_put(record, qualifier.data, qualifier.size);
-    for (uint32_t at = 0; !status && at < size;) {
-        if (qualifier.size && at + qualifier.size <= size &&
-            !memcmp(text + at, qualifier.data, qualifier.size)) {
-            status = ud_bytes_put(record, qualifier.data, qualifier.size);
-            if (!status)
-                status = ud_bytes_put(record, qualifier.data, qualifier.size);
-            at += (uint32_t)qualifier.size;
-        } else
-            status = ud_bytes_put(record, text + at++, 1);
+            break;
+        }
     }
-    if (!status && quoted)
-        status = ud_bytes_put(record, qualifier.data, qualifier.size);
-    ud_bytes_clear(&delimiter);
-    ud_bytes_clear(&qualifier);
-    return status;
+    if (!quoted)
+        return ud_bytes_put(record, text, size);
+    if (!qualifier->size)
+        return UD_TRUNCATED;
+    UD_TRY(ud_bytes_put(record, qualifier->data, qualifier->size));
+    uint32_t start = 0;
+    for (uint32_t at = 0; qualifier->size <= size - at;) {
+        if (memcmp(text + at, qualifier->data, qualifier->size)) {
+            at++;
+            continue;
+        }
+        UD_TRY(ud_bytes_put(record, text + start, at - start));
+        UD_TRY(ud_bytes_put(record, qualifier->data, qualifier->size));
+        UD_TRY(ud_bytes_put(record, qualifier->data, qualifier->size));
+        at += (uint32_t)qualifier->size;
+        start = at;
+    }
+    UD_TRY(ud_bytes_put(record, text + start, size - start));
+    return ud_bytes_put(record, qualifier->data, qualifier->size);
 }
 static ud_status csv_line(ud_csv_writer *writer, ud_bytes *record) {
     UD_TRY(ud_bytes_put(record, writer->layout.crlf ? "\r\n" : "\n", writer->layout.crlf ? 2 : 1));
@@ -742,9 +743,16 @@ ud_status ud_csv_writer_open(ud_context *ctx, const char *path, const ud_field *
         return UD_RESOURCE;
     writer->ctx = ctx;
     writer->columns = columns;
+    writer->delimiter.ctx = ctx;
+    writer->qualifier.ctx = ctx;
     writer->max_record_bytes =
         options && options->max_record_bytes ? options->max_record_bytes : 16777216;
     ud_status status = layout_open(ctx, options, columns, &writer->layout);
+    if (!status && !writer->layout.widths) {
+        status = ud_text_utf8(&writer->delimiter, writer->layout.delimiter);
+        if (!status && writer->layout.qualifier)
+            status = ud_text_utf8(&writer->qualifier, writer->layout.qualifier);
+    }
     if (!status)
         status = ud_batch_create(ctx, fields, columns, 0, &writer->schema);
     if (!status) {
@@ -798,11 +806,14 @@ ud_status ud_csv_writer_append(ud_csv_writer *writer, const ud_batch *batch) {
         if (!ud_field_matches(&writer->schema->column[at].field, &batch->column[at].field,
                               UD_FIELD_PORT))
             return UD_SCHEMA;
-    for (uint32_t at = 0; at < batch->rows; at++) {
-        if (ud_is_cancelled(writer->ctx))
-            return UD_CANCELLED;
-        ud_bytes record = {.ctx = writer->ctx, .limit = writer->max_record_bytes};
-        ud_status status = UD_OK;
+    ud_bytes record = {.ctx = writer->ctx, .limit = writer->max_record_bytes};
+    ud_status status = UD_OK;
+    for (uint32_t at = 0; !status && at < batch->rows; at++) {
+        if (ud_is_cancelled(writer->ctx)) {
+            status = UD_CANCELLED;
+            break;
+        }
+        record.size = 0;
         for (uint32_t physical = 0; !status && physical < batch->columns; physical++) {
             uint32_t logical =
                 writer->layout.positions ? writer->layout.positions[physical] : physical;
@@ -843,11 +854,9 @@ ud_status ud_csv_writer_append(ud_csv_writer *writer, const ud_batch *batch) {
         }
         if (!status)
             status = csv_line(writer, &record);
-        ud_bytes_clear(&record);
-        if (status)
-            return status;
     }
-    return UD_OK;
+    ud_bytes_clear(&record);
+    return status;
 }
 ud_status ud_csv_writer_close(ud_csv_writer *writer) {
     if (!writer)
@@ -858,6 +867,8 @@ ud_status ud_csv_writer_close(ud_csv_writer *writer) {
         if (fclose(writer->file))
             status = UD_IO;
     }
+    ud_bytes_clear(&writer->delimiter);
+    ud_bytes_clear(&writer->qualifier);
     ud_batch_destroy(writer->schema);
     layout_clear(&writer->layout);
     ud_free(writer);

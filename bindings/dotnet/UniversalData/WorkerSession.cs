@@ -56,24 +56,25 @@ internal sealed class WorkerSession(NamedPipeClientStream pipe, SdkWorkerGrant g
             sent = true;
             await WorkerProtocol.WriteAsync(pipe, request, null, deadline.Token).ConfigureAwait(false);
             var response = WorkerProtocol.ReadAsync<WorkerResponseFrame>(pipe).AsTask();
-            using var waiting = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
-            var interrupted = Task.Delay(Timeout.InfiniteTimeSpan, waiting.Token);
-            if (await Task.WhenAny(response, interrupted).ConfigureAwait(false) != response && !response.IsCompleted)
+            try { await response.WaitAsync(deadline.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
             {
-                timedOut = timeout.IsCancellationRequested && !cancellation.IsCancellationRequested;
-                using var grace = new CancellationTokenSource(host.Options.CancellationGrace);
-                await WorkerProtocol.WriteAsync(pipe, request with { Operation = "sdk.cancel", Values = defaultValue },
-                    null, grace.Token).ConfigureAwait(false);
-                try { await response.WaitAsync(grace.Token).ConfigureAwait(false); }
-                catch (OperationCanceledException) when (grace.IsCancellationRequested)
+                if (!response.IsCompleted)
                 {
-                    await TerminateAsync().ConfigureAwait(false);
-                    try { (await response.ConfigureAwait(false)).Batch?.Dispose(); }
-                    catch (Exception error) when (IsTransport(error)) { }
-                    return Failure(timedOut ? StatusCode.Timeout : StatusCode.Cancelled, mayWrite);
+                    timedOut = timeout.IsCancellationRequested && !cancellation.IsCancellationRequested;
+                    using var grace = new CancellationTokenSource(host.Options.CancellationGrace);
+                    await WorkerProtocol.WriteAsync(pipe, request with { Operation = "sdk.cancel", Values = defaultValue },
+                        null, grace.Token).ConfigureAwait(false);
+                    try { await response.WaitAsync(grace.Token).ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (grace.IsCancellationRequested)
+                    {
+                        await TerminateAsync().ConfigureAwait(false);
+                        try { (await response.ConfigureAwait(false)).Batch?.Dispose(); }
+                        catch (Exception error) when (IsTransport(error)) { }
+                        return Failure(timedOut ? StatusCode.Timeout : StatusCode.Cancelled, mayWrite);
+                    }
                 }
             }
-            await waiting.CancelAsync().ConfigureAwait(false);
             var result = await response.ConfigureAwait(false);
             if (result.Message.Revision != ProductInfo.WorkerRevision || result.Message.SessionId != grant.SessionId ||
                 result.Message.Sequence != id ||

@@ -126,8 +126,18 @@ with tempfile.TemporaryDirectory(prefix="ud-worker-supervision-") as directory:
             assert capacity()["usedProcesses"] <= 2
             expected = file_contents(input_file)
             assert expected[0] == rows + 1
-            for ticket,name in zip(tickets,names):
-                eventually(lambda: call("/api/executions/"+ticket)["state"] == "Succeeded",55)
+            for ticket, name in zip(tickets, names):
+                last = {}
+
+                def succeeded():
+                    last.update(call("/api/executions/" + ticket))
+                    assert last["state"] not in ("Failed", "RecoveryRequired", "Cancelled"), last
+                    return last["state"] == "Succeeded"
+
+                try:
+                    eventually(succeeded, 55)
+                except AssertionError as error:
+                    raise AssertionError(f"{name} execution did not succeed: {last}") from error
                 assert file_contents(files/(name+".csv")) == expected
             cancelled = call("/api/executions","POST",dict(packageId=names[0],packageRevision="1",
                 debug=dict(definitionBreakpoints=[["copy"]],previewRows=0)))["id"]
