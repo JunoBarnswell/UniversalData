@@ -212,7 +212,7 @@ ud_status ud_rel_pivot_pull(ud_relational *r, ud_batch **out, uint32_t *port) {
                 if (!r->acc[i])
                     status = ud_accumulator_create(r->pivot_plan, r->acc + i);
                 if (!status)
-                    status = ud_accumulator_add_accepted(r->acc[i], b, row);
+                    status = ud_accumulator_update_accepted(r->acc[i], b, row, 1);
             } else if (!r->seen[i] || r->duplicate == 6) {
                 ud_value v;
                 status = ud_batch_get(b, row, r->value_column, &v);

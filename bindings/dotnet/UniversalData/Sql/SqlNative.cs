@@ -20,10 +20,6 @@ internal static partial class SqlNative
     internal const int TransactionRollback = 3;
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int ud_sql_session_open(int dialect, Native.StringValue pluginPath,
-        Native.StringValue connectionString, out IntPtr session);
-
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     private static extern int ud_execution_sql_session_open(ExecutionHandle execution,
         Native.StringValue connection, out IntPtr session);
 
@@ -94,28 +90,24 @@ internal static partial class SqlNative
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     private static extern void ud_batch_destroy(IntPtr batch);
 
-    internal static SqlSessionHandle Open(DataSourceKind dialect, string pluginPath, string connectionString)
-    {
-        var nativeDialect = dialect switch
-        {
-            DataSourceKind.Sqlite => 1,
-            DataSourceKind.PostgreSql => 2,
-            DataSourceKind.MySql => 3,
-            DataSourceKind.MariaDb => 4,
-            DataSourceKind.SqlServer => 5,
-            DataSourceKind.Oracle => 6,
-            _ => throw new ArgumentOutOfRangeException(nameof(dialect))
-        };
-        using var values = new NativeStrings(pluginPath, connectionString);
-        Check(ud_sql_session_open(nativeDialect, values[0], values[1], out var pointer));
-        return new SqlSessionHandle(pointer);
-    }
-
     internal static SqlSessionHandle Open(ExecutionHandle execution, string connection)
     {
         using var values = new NativeStrings(connection);
-        Check(ud_execution_sql_session_open(execution, values[0], out var pointer));
-        return new SqlSessionHandle(pointer);
+        bool pinned = false;
+        try
+        {
+            execution.DangerousAddRef(ref pinned);
+            var status = (StatusCode)ud_execution_sql_session_open(execution, values[0], out var pointer);
+            if (status != StatusCode.Ok)
+            {
+                var detail = WorkerNativeError.FromExecution(execution, status);
+                throw new UniversalDataException((int)status, detail.Message, detail);
+            }
+            var session = new SqlSessionHandle(pointer, execution);
+            pinned = false;
+            return session;
+        }
+        finally { if (pinned) execution.DangerousRelease(); }
     }
 
     internal static IntPtr Context(SqlSessionHandle session) => ud_sql_session_context(session);
@@ -128,6 +120,16 @@ internal static partial class SqlNative
         5 => DataSourceKind.SqlServer,
         6 => DataSourceKind.Oracle,
         _ => throw new NotSupportedException("The authorized Native connector has no supported database dialect.")
+    };
+    internal static int Dialect(DataSourceKind kind) => kind switch
+    {
+        DataSourceKind.Sqlite => 1,
+        DataSourceKind.PostgreSql => 2,
+        DataSourceKind.MySql => 3,
+        DataSourceKind.MariaDb => 4,
+        DataSourceKind.SqlServer => 5,
+        DataSourceKind.Oracle => 6,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), "A Native SQL data source is required.")
     };
     internal static int SetAutoClose(SqlSessionHandle session, bool enabled) => ud_sql_session_set_auto_close(session, enabled ? 1 : 0);
 

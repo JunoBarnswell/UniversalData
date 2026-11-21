@@ -1,0 +1,44 @@
+using Microsoft.Win32.SafeHandles;
+using System.Runtime.InteropServices;
+
+namespace UniversalData;
+
+internal sealed class ConnectionPool : SafeHandleZeroOrMinusOneIsInvalid
+{
+    internal ConnectionPool(uint maxSessions, ulong memoryLimit) : base(true)
+    {
+        SqlNative.Check(Native.ud_connection_pool_create(maxSessions, memoryLimit, out var pointer));
+        SetHandle(pointer);
+    }
+
+    protected override bool ReleaseHandle() => Native.ud_connection_pool_destroy(handle) == 0;
+}
+
+internal static partial class Native
+{
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_connection_pool_create(uint maxSessions, ulong memoryLimit, out IntPtr pool);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_connection_pool_destroy(IntPtr pool);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int ud_execution_create_json_in_pool(ConnectionPool pool, StringValue json,
+        ref ExecutionOptions options, out IntPtr execution);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int ud_execution_create_partitioned_in_pool(ConnectionPool pool, StringValue json,
+        ref ExecutionOptions options, StringValue run, StringValue topic, KafkaPartitionInputValue[] parts,
+        uint count, out IntPtr execution);
+
+    internal static int CreateExecution(StringValue document, ref ExecutionOptions options, ConnectionPool? pool,
+        out IntPtr execution) => pool is null
+            ? ud_execution_create_json(document, ref options, out execution)
+            : ud_execution_create_json_in_pool(pool, document, ref options, out execution);
+
+    internal static int CreatePartitionedExecution(StringValue document, ref ExecutionOptions options,
+        StringValue run, StringValue topic, KafkaPartitionInputValue[] parts, ConnectionPool? pool,
+        out IntPtr execution) => pool is null
+            ? ud_execution_create_partitioned(document, ref options, run, topic, parts, (uint)parts.Length, out execution)
+            : ud_execution_create_partitioned_in_pool(pool, document, ref options, run, topic, parts, (uint)parts.Length, out execution);
+}

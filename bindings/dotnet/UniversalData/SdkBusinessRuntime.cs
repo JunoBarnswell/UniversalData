@@ -15,7 +15,7 @@ internal static class SdkBusinessRuntime
             environment.MaxConnectionsPerSource < 1 || invocation.Sources.Length > 4096 ||
             invocation.Sources.Select(source => source.Definition.Name).Distinct(StringComparer.Ordinal).Count() != invocation.Sources.Length)
             throw new InvalidDataException("Invalid SDK invocation");
-        var state = new SdkInvocationState(new(invocation.RunId), environment, invocation.Sources, invocation.DefaultSource);
+        using var state = new SdkInvocationState(new(invocation.RunId), environment, invocation.Sources, invocation.DefaultSource);
         var context = new DataContext(state, cancellation);
         if (invocation.Method.ModuleSha256 == BuiltinModule && invocation.Method.Name == "probe")
         {
@@ -64,9 +64,9 @@ internal static class SdkBusinessRuntime
     private static async Task<DataSourceProbe> ProbeAsync(DataContext context, string name, CancellationToken cancellation)
     {
         var source = context.State.Sources.Single(binding => binding.Definition.Name == name);
-        if (source.Definition.Kind == DataSourceKind.Http)
+        if (!source.Definition.IsDatabase)
         {
-            var probe = await context.Http(name).ProbeAsync(cancellation).ConfigureAwait(false);
+            var probe = await new DataHttp(context, source).ProbeAsync(cancellation).ConfigureAwait(false);
             return new(DataSourceRegistry.Describe(source), probe, probe ? ["HTTP"] : []);
         }
         try

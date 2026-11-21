@@ -9,6 +9,7 @@ extern "C" {
 #endif
 typedef struct ud_package ud_package;
 typedef struct ud_sql_session ud_sql_session;
+typedef struct ud_connection_pool ud_connection_pool;
 UD_API ud_status ud_package_requires_journal(const ud_package *, int32_t *);
 UD_API ud_status ud_execution_sql_session_open(ud_execution *, ud_string connection,
                                                  ud_sql_session **);
@@ -118,6 +119,14 @@ UD_API void ud_package_destroy(ud_package *);
 UD_API ud_status ud_execution_create(const ud_package *, const ud_execution_options *,
                                      ud_execution **);
 UD_API ud_status ud_execution_create_json(ud_string, const ud_execution_options *, ud_execution **);
+/* Owns physical connector sessions while each Execution retains its own grants,
+ * credential resolver, cancellation and Journal. Destroy only after every
+ * borrowing Execution (and any borrowed result) has been released. */
+UD_API ud_status ud_connection_pool_create(uint32_t max_sessions, uint64_t memory_limit,
+                                           ud_connection_pool **);
+UD_API ud_status ud_connection_pool_destroy(ud_connection_pool *);
+UD_API ud_status ud_execution_create_json_in_pool(ud_connection_pool *, ud_string,
+                                                  const ud_execution_options *, ud_execution **);
 typedef struct ud_kafka_partition_assignment {
     int32_t partition, require_checkpoint;
     int64_t start_offset;
@@ -126,6 +135,9 @@ typedef struct ud_kafka_partition_assignment {
  * parent run identity and partition offsets remain stable across grouping. */
 UD_API ud_status ud_execution_create_partitioned(ud_string, const ud_execution_options *,
     ud_string run_id, ud_string topic, const ud_kafka_partition_assignment *, uint32_t count, ud_execution **);
+UD_API ud_status ud_execution_create_partitioned_in_pool(ud_connection_pool *, ud_string,
+    const ud_execution_options *, ud_string run_id, ud_string topic,
+    const ud_kafka_partition_assignment *, uint32_t count, ud_execution **);
 UD_API ud_status ud_execution_message_partition_positions(ud_execution *, ud_string connection,
     ud_string topic, ud_string group, ud_message_partition_position *, uint32_t capacity, uint32_t *);
 /* Immutable identity borrowed until Execution destruction; available in every state.

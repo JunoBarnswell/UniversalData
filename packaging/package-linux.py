@@ -11,6 +11,8 @@ import sys
 import tempfile
 import zipfile
 
+from pack_sdk import ICEBERG_RUNTIMES
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--build', required=True, type=pathlib.Path)
@@ -52,6 +54,10 @@ for entry in inventory:
     assert all(p.is_file() and p.stat().st_size for p in licenses)
     names.add(name)
     validated.append((entry, source, needed, name, licenses))
+
+if 'UD_WITH_ICEBERG:BOOL=ON' in cache:
+    missing = ICEBERG_RUNTIMES['linux-x64'] - names
+    assert not missing, f'Missing licensed Iceberg runtimes: {", ".join(sorted(missing))}'
 
 output.mkdir(parents=True)
 sdk, packages = output / 'sdk', output / 'packages'
@@ -132,7 +138,7 @@ files = [dict(path=p.relative_to(output).as_posix(), bytes=p.stat().st_size, sha
 drivers = ('sqlite', 'postgresql', 'odbc', 'mysql', 'mariadb', 'oracle_oci',
            'activemq', 'rabbitmq', 'rocketmq', 'kafka')
 features = {key: ('UD_WITH_' + key.upper() + ':BOOL=ON') in cache
-            for key in (*drivers, 'arrow_files', 'http', 'xml', 'network')}
+            for key in (*drivers, 'arrow_files', 'iceberg', 'http', 'xml', 'network')}
 if 'UD_BUILD_PROFILE:STRING=PRODUCT' in cache:
     assert all(features.values()), 'Complete product dependencies cannot silently downgrade'
 for driver in drivers:

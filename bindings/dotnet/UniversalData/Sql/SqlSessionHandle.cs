@@ -4,7 +4,18 @@ namespace UniversalData;
 
 internal sealed class SqlSessionHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    internal SqlSessionHandle(IntPtr pointer) : base(true) => SetHandle(pointer);
+    private readonly ExecutionHandle? execution;
 
-    protected override bool ReleaseHandle() => SqlNative.CloseRaw(handle) == 0;
+    internal SqlSessionHandle(IntPtr pointer, ExecutionHandle? execution = null) : base(true)
+    {
+        this.execution = execution;
+        SetHandle(pointer);
+    }
+
+    protected override bool ReleaseHandle()
+    {
+        int status = SqlNative.CloseRaw(handle);
+        if (status == 0) execution?.DangerousRelease();
+        return status == 0;
+    }
 }

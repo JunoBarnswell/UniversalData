@@ -20,6 +20,28 @@ if (args is ["--latency", var latencyPolicy, var slowDatabase, var fastDatabase,
     await LatencyCase.RunAsync(latencyPolicy, slowDatabase, fastDatabase, latencyOrigin);
     return;
 }
+if (args is ["--shared", var sharedPolicy, var sharedOrders, var sharedLedger, var sharedOrigin])
+{
+    await SharedSessionCase.RunAsync(sharedPolicy, sharedOrders, sharedLedger, sharedOrigin);
+    return;
+}
+if (args is ["--node-capacity", var nodePolicy, var nodeDatabase, _, _])
+{
+    await NodeCapacityCase.RunAsync(nodePolicy, nodeDatabase);
+    return;
+}
+if (args is ["--native-orm", var ormFixture, .. var ormPluginRoots])
+{
+    await NativeOrmCase.RunAsync(ormFixture, ormPluginRoots);
+    return;
+}
+if (args is ["--management-cdc", var cdcPolicy, var managementAddress, var sourceTable,
+    var cdcSlot, var cdcPublication, var cdcPosition, var cdcTarget, var cdcSubject, var cdcPassword])
+{
+    await ManagementCdcCase.RunAsync(cdcPolicy, managementAddress, sourceTable, cdcSlot,
+        cdcPublication, cdcPosition, cdcTarget, cdcSubject, cdcPassword);
+    return;
+}
 if (args is not [var policy, var firstDatabase, var secondDatabase, var substitute, var address, var atomicMarker])
     throw new ArgumentException("Expected policy, two SQLite files, replacement file, HTTP origin and Atomic marker");
 
@@ -54,8 +76,10 @@ await using (var session = await data.OpenSessionAsync(token))
     var before = await session.RunAsync(Jobs.Scope, "orders", token);
     Require(before.ProcessId == sessionPid && before.Value == "orders-original", "Explicit session must use its leased process");
 
-    var inFlight = session.RunAsync(Jobs.WaitThenRead, new HeldRead("replace", "orders"), token);
+    var inFlight = session.RunAsync(Jobs.HoldLeaseThenRead, new HeldRead("replace", "orders"), token);
+    var staleBorrow = data.RunAsync(Jobs.WaitThenRead, new HeldRead("stale-borrow", "orders"), token);
     await Entered(driver, "replace", token);
+    await Entered(driver, "stale-borrow", token);
     var source = data.Sources.Get("orders");
     var selected = new DataSourceDefinition("orders", DataSourceKind.Sqlite, "Data Source=" + substitute);
     Require(data.Sources.Replace("orders", source.Revision, selected).Revision == source.Revision + 1,
@@ -67,7 +91,14 @@ await using (var session = await data.OpenSessionAsync(token))
     }
     catch (UniversalDataException error) when (error.Code == StatusCode.Fenced) { }
     await Release(driver, "replace", token);
-    Require(await inFlight == "orders-original", "In-flight work must resolve its original source snapshot");
+    await Release(driver, "stale-borrow", token);
+    Require(await inFlight == "orders-original", "An already-borrowed physical connection must preserve its source");
+    try
+    {
+        await staleBorrow;
+        throw new InvalidOperationException("An old source revision admitted a new physical lease");
+    }
+    catch (UniversalDataException error) when (error.Code is StatusCode.Auth or StatusCode.Fenced) { }
     var after = await session.RunAsync(Jobs.Scope, "orders", token);
     Require(after.ProcessId == sessionPid && after.Value == "orders-replacement" && after.StaleScopeRejected,
         "The next invocation must reuse the PID, refresh source revisions and invalidate the previous context");

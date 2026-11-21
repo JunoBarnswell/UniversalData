@@ -14,6 +14,11 @@ SDK = ROOT / "bindings/dotnet/UniversalData/UniversalData.csproj"
 WORKER = ROOT / "products/UniversalData.Worker/UniversalData.Worker.csproj"
 RIDS = ("win-x64", "linux-x64")
 DRIVERS = ("sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci")
+ICEBERG_RUNTIMES = {
+    "linux-x64": {"libiceberg.so", "libiceberg_data.so", "libiceberg_bundle.so", "libiceberg_rest.so",
+                  "libarrow.so.2500", "libparquet.so.2500"},
+    "win-x64": {"iceberg.dll", "iceberg_data.dll", "iceberg_bundle.dll", "iceberg_rest.dll"},
+}
 
 
 def nuspec(path, identity, version, description, files, dependencies=()):
@@ -72,6 +77,11 @@ def assemble(args):
                 if target.exists() and target.read_bytes() != dependency.read_bytes():
                     raise ValueError(f"Conflicting runtime dependency {dependency.name}")
                 shutil.copyfile(dependency, target)
+        if args.complete:
+            available = {path.name.lower() for path in native.iterdir()}
+            missing = ICEBERG_RUNTIMES[args.rid] - available
+            if missing:
+                raise FileNotFoundError(f"Missing {args.rid} Iceberg runtime files: {', '.join(sorted(missing))}")
         for asset in native.iterdir():
             shutil.copyfile(asset, worker / asset.name)
 

@@ -1,7 +1,7 @@
 <!-- Generated from metadata/product.json. -->
 <Project>
   <PropertyGroup>
-    <UDSdkVersion>8.0.0</UDSdkVersion>
+    <UDSdkVersion>9.0.0</UDSdkVersion>
     <UDSqlSugarCoreVersion>5.1.4.216</UDSqlSugarCoreVersion>
     <UDMySqlConnectorVersion>2.6.1</UDMySqlConnectorVersion>
     <UDSQLitePCLRawlibe_sqlite3Version>2.1.14</UDSQLitePCLRawlibe_sqlite3Version>

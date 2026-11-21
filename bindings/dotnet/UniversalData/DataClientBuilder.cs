@@ -5,7 +5,7 @@ namespace UniversalData;
 
 public sealed class DataWorkerOptions
 {
-    private int sessions = 4, branches = 2, queue = 128, connections = 2;
+    private int sessions = 4, branches = 2, queue = 128, connections = 2, sessionsPerWorker = 1;
     private ulong memory = 268435456;
     private TimeSpan queueTimeout = TimeSpan.FromSeconds(30), executionTimeout = TimeSpan.FromMinutes(5),
         cancellationGrace = TimeSpan.FromSeconds(10);
@@ -14,6 +14,7 @@ public sealed class DataWorkerOptions
     internal string? Executable => executable;
 
     public DataWorkerOptions MaxConcurrentSessions(int value) { sessions = value; return this; }
+    public DataWorkerOptions MaxSessionsPerWorker(int value) { sessionsPerWorker = value; return this; }
     public DataWorkerOptions MaxBranchesPerSession(int value) { branches = value; return this; }
     public DataWorkerOptions MaxConnectionsPerSource(int value) { connections = value; return this; }
     public DataWorkerOptions QueueCapacity(int value) { queue = value; return this; }
@@ -26,11 +27,13 @@ public sealed class DataWorkerOptions
 
     internal SdkHostOptions Freeze()
     {
-        if (sessions is < 1 or > 64 || branches is < 1 or > 64 || connections is < 1 or > 64 ||
+        if (sessions is < 1 or > 64 || sessionsPerWorker < 1 || sessionsPerWorker > sessions ||
+            branches is < 1 or > 64 || connections is < 1 or > 64 ||
             queue is < 1 or > 65536 || memory == 0 || !Valid(queueTimeout) || !Valid(executionTimeout) ||
             !Valid(cancellationGrace) || (isolation && sessions < 2))
             throw new ArgumentException("Invalid SDK Worker resource budget");
-        return new(sessions, branches, queue, queueTimeout, executionTimeout, cancellationGrace, memory, connections, isolation);
+        return new(sessions, branches, queue, queueTimeout, executionTimeout, cancellationGrace, memory, connections, isolation,
+            sessionsPerWorker);
     }
 
     private static bool Valid(TimeSpan value) => value > TimeSpan.Zero && value <= TimeSpan.FromDays(7);
@@ -80,6 +83,11 @@ public sealed class DataClientBuilder
         AddDatabase(name, DataSourceKind.Sqlite, connectionString, configure);
     public DataClientBuilder AddHttp(string name, Uri baseUri) => AddSource(new(name, DataSourceKind.Http, "", baseUri: baseUri));
 
+    public DataClientBuilder AddIceberg(string name, Uri catalog, string storageRoot,
+        string? warehouse = null, string? credentialReference = null) =>
+        AddSource(new(name, DataSourceKind.Iceberg, "", credentialReference: credentialReference,
+            baseUri: catalog, storageRoot: storageRoot, catalogWarehouse: warehouse));
+
     public DataClientBuilder DefaultDatabase(string name) { defaultSource = name; return this; }
 
     public DataClientBuilder AddModule(Assembly assembly)
@@ -103,7 +111,7 @@ public sealed class DataClientBuilder
 
     public DataClient Build()
     {
-        if (defaultSource is not null && (!sources.TryGetValue(defaultSource, out var source) || source.Kind == DataSourceKind.Http))
+        if (defaultSource is not null && (!sources.TryGetValue(defaultSource, out var source) || !source.IsDatabase))
             throw new ArgumentException("The default source must name a registered database");
         return new(policyFile, tenant, workers.Freeze(), sources.Values.ToArray(), modules.Values.ToArray(), defaultSource,
             workers.Executable);

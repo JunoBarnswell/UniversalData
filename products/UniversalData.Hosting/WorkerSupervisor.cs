@@ -3,15 +3,6 @@ using System.Text.Json;
 
 namespace UniversalData.Hosting;
 
-public sealed record WorkerSupervisorSettings(int Prewarm = 1, int IdleSeconds = 60)
-{
-    internal void Validate(uint maxProcesses)
-    {
-        if (Prewarm < 0 || Prewarm > maxProcesses || IdleSeconds is < 1 or > 86400)
-            throw new InvalidDataException("Invalid Worker prewarm settings");
-    }
-}
-
 /// <summary>Owns physical process capacity and the inherited pipe from launch until observed exit.</summary>
 public sealed class WorkerSupervisor : IAsyncDisposable
 {
@@ -20,6 +11,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
     private readonly List<Slot> slots = [];
     private readonly string path;
     private readonly string? settingsPath;
+    private readonly WorkerNodeResources? nodeResources;
     private readonly bool enforceOrdinaryLimits;
     private readonly CancellationTokenSource lifetime = new();
     private readonly Task upkeep;
@@ -33,11 +25,13 @@ public sealed class WorkerSupervisor : IAsyncDisposable
     private bool closing;
 
     public WorkerSupervisor(string workerPath, uint maxProcesses, uint maxCpu, ulong maxMemoryBytes,
-        ulong nativeMemoryBytes, string? configurationPath = null, bool enforceOrdinaryLimits = false, int initialPrewarm = 1)
+        ulong nativeMemoryBytes, string? configurationPath = null, bool enforceOrdinaryLimits = false,
+        int initialPrewarm = 1, string? nodeDirectory = null, uint nodeMaxProcesses = 0)
     {
         path = Path.GetFullPath(workerPath);
         settingsPath = configurationPath is null ? null : Path.GetFullPath(configurationPath);
         this.enforceOrdinaryLimits = enforceOrdinaryLimits;
+        nodeResources = nodeDirectory is null ? null : new(nodeDirectory, nodeMaxProcesses == 0 ? maxProcesses : nodeMaxProcesses);
         MaxProcesses = maxProcesses;
         MaxCpu = maxCpu;
         MaxMemoryBytes = maxMemoryBytes;
@@ -63,13 +57,16 @@ public sealed class WorkerSupervisor : IAsyncDisposable
             var idle = slots.Where(slot => !slot.Finished && !slot.Borrowed && !slot.Draining && slot.ProcessId != 0)
                 .Select(slot => slot.ProcessId).ToArray();
             uint reusable = (uint)slots.Count(slot => !slot.Finished && !slot.Borrowed && !slot.Draining);
+            var shared = nodeResources?.Available();
+            uint freeProcesses = Math.Min(MaxProcesses - processes, shared?.Processes ?? uint.MaxValue);
+            uint freeCpu = Math.Min(MaxCpu - cpu, shared?.Cpu ?? uint.MaxValue);
+            ulong freeMemory = Math.Min(MaxMemoryBytes - memory, shared?.Memory ?? ulong.MaxValue);
             return new((uint)slots.Count(slot => !slot.Draining && slot.ProcessId == 0),
                 idle,
                 (uint)slots.Count(slot => !slot.Finished && slot.Borrowed && !slot.Draining && slot.ProcessId != 0),
                 (uint)slots.Count(slot => !slot.Finished && slot.Draining), processes, cpu, memory,
-                MaxProcesses - processes + reusable,
-                MaxCpu - cpu + reusable,
-                MaxMemoryBytes - memory + reusable * OrdinaryBudget.ProcessMemoryBytes,
+                freeProcesses + reusable, freeCpu + reusable,
+                freeMemory + reusable * OrdinaryBudget.ProcessMemoryBytes,
                 configError ?? (closing ? "Draining" : Stopwatch.GetTimestamp() < retryAfter
                     ? "WorkerRestartBackoff" : null));
         }
@@ -94,16 +91,18 @@ public sealed class WorkerSupervisor : IAsyncDisposable
                     request.Budget is null && charge == OrdinaryBudget;
                 var warm = ordinary ? slots.Find(candidate => candidate.Generation == generation &&
                     !candidate.Borrowed && !candidate.Draining && !candidate.Finished) : null;
-                if (warm is not null || (Stopwatch.GetTimestamp() >= retryAfter && Fits(charge)))
+                var available = warm ?? (Stopwatch.GetTimestamp() >= retryAfter ? TryOpen(charge, request) : null);
+                if (available is not null)
                 {
-                    slot = warm ?? Open(charge, request);
+                    slot = available;
                     slot.Borrowed = true;
                     Notify();
                     break;
                 }
 
                 if (!Fits(charge))
-                    Retire(slots.Find(candidate => !candidate.Draining && !candidate.Borrowed));
+                    Retire(slots.Find(candidate => !candidate.Draining && !candidate.Finished &&
+                        (!candidate.Borrowed || candidate.BeginIdleRetirement?.Invoke() == true)));
                 next = changed.Task;
             }
             await next.WaitAsync(cancellation);
@@ -169,12 +168,24 @@ public sealed class WorkerSupervisor : IAsyncDisposable
                     if (closing)
                         return;
                     long now = Stopwatch.GetTimestamp();
+                    bool pressure = nodeResources?.HasWaitingRequest == true;
                     bool newReady = slots.Any(slot => slot.Generation == generation && slot.ProcessId != 0 && !slot.Draining);
                     int warm = 0;
                     foreach (var slot in slots)
                     {
-                        if (slot.Draining || slot.Borrowed)
+                        if (slot.Draining)
                             continue;
+                        if (slot.Borrowed)
+                        {
+                            if (pressure && slot.BeginIdleRetirement?.Invoke() == true)
+                                Retire(slot);
+                            continue;
+                        }
+                        if (pressure)
+                        {
+                            Retire(slot);
+                            continue;
+                        }
                         if (slot.Generation != generation)
                         {
                             if (newReady || settings.Prewarm == 0 || !Fits(OrdinaryBudget))
@@ -184,8 +195,8 @@ public sealed class WorkerSupervisor : IAsyncDisposable
                             Stopwatch.GetElapsedTime(slot.ReadyAt, now) >= TimeSpan.FromSeconds(settings.IdleSeconds))
                             Retire(slot);
                     }
-                    if (warm < settings.Prewarm && now >= retryAfter && Fits(OrdinaryBudget))
-                        Open(OrdinaryBudget, null);
+                    if (!pressure && warm < settings.Prewarm && now >= retryAfter)
+                        TryOpen(OrdinaryBudget, null);
                     Notify();
                 }
             } while (await cadence.WaitForNextTickAsync(lifetime.Token));
@@ -215,9 +226,12 @@ public sealed class WorkerSupervisor : IAsyncDisposable
             budget.ProcessMemoryBytes <= MaxMemoryBytes - memory;
     }
 
-    private Slot Open(WorkerBudget charge, WorkerRequest? request)
+    private Slot? TryOpen(WorkerBudget charge, WorkerRequest? request)
     {
-        var slot = new Slot(generation, charge, request?.Isolated == true);
+        if (!Fits(charge)) return null;
+        var reservation = nodeResources?.TryReserve(charge, request is not null);
+        if (nodeResources is not null && reservation is null) return null;
+        var slot = new Slot(generation, charge, request?.Isolated == true, reservation);
         slots.Add(slot);
         slot.Observer = Task.Run(() => Observe(slot, request));
         return slot;
@@ -236,6 +250,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
             slot.Process = process;
             stderr = WorkerProtocol.Discard(process.StandardError, CancellationToken.None);
             int pid = await WorkerLauncher.WaitReady(process, startup.Token);
+            slot.Reservation?.Bind(pid);
             lock (gate)
             {
                 slot.ProcessId = pid;
@@ -267,12 +282,16 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         {
             try { if (stderr is not null) await stderr; }
             catch (IOException) { }
-            lock (gate)
+            try { slot.Reservation?.Dispose(); }
+            finally
             {
-                slot.Finished = true;
-                if (!slot.Borrowed)
-                    Forget(slot);
-                Notify();
+                lock (gate)
+                {
+                    slot.Finished = true;
+                    if (!slot.Borrowed)
+                        Forget(slot);
+                    Notify();
+                }
             }
         }
     }
@@ -340,12 +359,13 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         finally { lifetime.Dispose(); }
     }
 
-    internal sealed class Slot(int generation, WorkerBudget charge, bool isolated)
+    internal sealed class Slot(int generation, WorkerBudget charge, bool isolated, WorkerNodeResourceLease? reservation)
     {
         internal string Key { get; } = Guid.NewGuid().ToString("N");
         internal int Generation { get; } = generation;
         internal WorkerBudget Charge { get; } = charge;
         internal bool Isolated { get; } = isolated;
+        internal WorkerNodeResourceLease? Reservation { get; } = reservation;
         internal CancellationTokenSource Retiring { get; } = new();
         internal TaskCompletionSource<Process> Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal Task Observer { get; set; } = Task.CompletedTask;
@@ -353,6 +373,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         internal int ProcessId { get; set; }
         internal long ReadyAt { get; set; }
         internal bool Borrowed { get; set; }
+        internal Func<bool>? BeginIdleRetirement { get; set; }
         internal bool Draining { get; set; }
         internal bool Finished { get; set; }
     }
@@ -364,6 +385,11 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         internal Process Process { get; } = process;
         internal int ProcessId => slot.ProcessId;
         internal Task TerminateAsync() => WorkerLauncher.Terminate(Process, slot.Key, slot.Isolated);
+
+        internal void OnIdleRetirement(Func<bool> begin)
+        {
+            lock (owner.gate) slot.BeginIdleRetirement = begin;
+        }
         internal async Task SendAsync(string command, CancellationToken cancellation)
         {
             await commands.WaitAsync(cancellation);

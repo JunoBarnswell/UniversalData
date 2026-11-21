@@ -5,7 +5,11 @@ internal static class SdkNativeSources
     internal static string CredentialReference(SdkSourceBinding binding) => "sdk-source/" + binding.Definition.Name + "/" +
         binding.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    internal static string PluginPath(DataSourceKind kind, string? workerPath = null)
+    internal static string PluginPath(DataSourceKind kind, string? workerPath = null) =>
+        FindPluginPath(kind, workerPath) ?? throw new UniversalDataException((int)StatusCode.DriverUnavailable,
+            $"The Native {kind} connector was not found in the installed runtime");
+
+    internal static string? FindPluginPath(DataSourceKind kind, string? workerPath = null)
     {
         var stem = kind switch
         {
@@ -46,7 +50,9 @@ internal static class SdkNativeSources
                     if (File.Exists(candidate)) return Path.GetFullPath(candidate);
             }
         }
-        throw new UniversalDataException((int)StatusCode.DriverUnavailable,
-            $"The Native {kind} connector was not found in the installed runtime");
+        return null;
     }
+
+    internal static SdkNativeConnection Describe(SdkSourceBinding binding, string path) =>
+        new(binding.Definition.Name, path, binding.Definition.Resource, CredentialReference(binding));
 }

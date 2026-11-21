@@ -597,12 +597,26 @@ if(TARGET ud_package)
 endif()
 
 # ABI 14: the same sealed Native batches feed SQL Source, direct SQL sessions and managed callers.
+if(UD_WITH_ICEBERG AND TARGET ud_cli AND TARGET ud_connector_sqlite AND TARGET test_next_phase_execution)
+  add_test(NAME integration_iceberg_v2 COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/iceberg_v2.py --cli $<TARGET_FILE:ud_cli>
+    --sqlite $<TARGET_FILE:ud_connector_sqlite> --runner $<TARGET_FILE:test_next_phase_execution>)
+  set_tests_properties(integration_iceberg_v2 PROPERTIES LABELS "real-integration;iceberg;recovery"
+    SKIP_RETURN_CODE 77 TIMEOUT 480 RESOURCE_LOCK ud_integration_iceberg)
+endif()
 if(TARGET ud_package)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
   add_test(NAME sql_etl_package_migration COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/package_v13_migration.py)
   set_tests_properties(sql_etl_package_migration PROPERTIES LABELS "sql-etl" TIMEOUT 20)
   if(TARGET ud_connector_sqlite)
+    add_executable(test_native_connection_pool native_connection_pool.c)
+    target_link_libraries(test_native_connection_pool PRIVATE ud_package)
+    add_test(NAME native_worker_connection_pool COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/sql_etl_fixture.py
+      --pool-test $<TARGET_FILE:test_native_connection_pool>
+      --plugin $<TARGET_FILE:ud_connector_sqlite>)
+    set_tests_properties(native_worker_connection_pool PROPERTIES LABELS "sdk;sqlite;sql-etl" TIMEOUT 30)
     add_executable(test_native_sql_batch native_sql_batch.c)
     target_link_libraries(test_native_sql_batch PRIVATE ud_plugins SQLite::SQLite3)
     add_test(NAME sql_etl_native_batch COMMAND ${Python3_EXECUTABLE}
@@ -678,12 +692,30 @@ if(TARGET ud_package)
       add_test(NAME sdk_fluent_sessions COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
         ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker> $<TARGET_FILE:ud_connector_sqlite>)
       set_tests_properties(sdk_fluent_sessions PROPERTIES LABELS "sdk;sql-etl;crash-recovery" TIMEOUT 130)
+      add_test(NAME sdk_fluent_shared_sessions COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
+        ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker> $<TARGET_FILE:ud_connector_sqlite> --shared)
+      set_tests_properties(sdk_fluent_shared_sessions PROPERTIES LABELS "sdk;sql-etl;crash-recovery" TIMEOUT 130)
+      add_test(NAME sdk_fluent_node_capacity COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
+        ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker> $<TARGET_FILE:ud_connector_sqlite> --node-capacity)
+      set_tests_properties(sdk_fluent_node_capacity PROPERTIES LABELS "sdk;cluster" TIMEOUT 90)
       add_test(NAME sdk_fluent_slow_sessions COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
         ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker> $<TARGET_FILE:ud_connector_sqlite> --latency)
       set_tests_properties(sdk_fluent_slow_sessions PROPERTIES LABELS "sdk;performance;real-integration"
         SKIP_RETURN_CODE 77 TIMEOUT 180 RUN_SERIAL TRUE)
       if(NOT WIN32)
-        set_tests_properties(sdk_fluent_sessions sdk_fluent_slow_sessions PROPERTIES
+        set_tests_properties(sdk_fluent_sessions sdk_fluent_shared_sessions sdk_fluent_slow_sessions sdk_fluent_node_capacity PROPERTIES
+          ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
+      endif()
+    endif()
+    if(TARGET ud_connector_postgresql AND TARGET ud_connector_sqlite)
+      add_test(NAME sdk_fluent_management_cdc COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
+        ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker>
+        ${PROJECT_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll
+        $<TARGET_FILE:ud_connector_postgresql> $<TARGET_FILE:ud_connector_sqlite> --management-cdc)
+      set_tests_properties(sdk_fluent_management_cdc PROPERTIES LABELS "sdk;cdc;real-integration"
+        SKIP_RETURN_CODE 77 TIMEOUT 180 RESOURCE_LOCK ud_integration_postgresql)
+      if(NOT WIN32)
+        set_tests_properties(sdk_fluent_management_cdc PROPERTIES
           ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
       endif()
     endif()
@@ -702,6 +734,18 @@ if(TARGET ud_package)
       set_tests_properties(sdk_fluent_atomic PROPERTIES
         LABELS "sdk;sql-etl;real-integration;xa" SKIP_RETURN_CODE 77 TIMEOUT 250
         RESOURCE_LOCK "${fluent_provider_locks}")
+      if(TARGET ud_connector_postgresql AND TARGET ud_connector_odbc AND TARGET ud_connector_mysql
+          AND TARGET ud_connector_mariadb AND TARGET ud_connector_oracle_oci AND TARGET ud_connector_sqlite)
+        add_test(NAME sdk_fluent_native_orm COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
+          ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker> $<TARGET_FILE_DIR:ud_connector_sqlite>
+          ${fluent_native_plugins} --native-orm)
+        set_tests_properties(sdk_fluent_native_orm PROPERTIES LABELS "sdk;sql-etl;real-integration"
+          SKIP_RETURN_CODE 77 TIMEOUT 250 RESOURCE_LOCK "${fluent_provider_locks}")
+        if(NOT WIN32)
+          set_tests_properties(sdk_fluent_native_orm PROPERTIES
+            ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
+        endif()
+      endif()
       if(NOT WIN32)
         set_tests_properties(sdk_fluent_atomic PROPERTIES
           ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")

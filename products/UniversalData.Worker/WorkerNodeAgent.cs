@@ -66,7 +66,8 @@ internal sealed class WorkerNodeAgent(
                 throw new InvalidDataException("Worker certificate lacks a private key");
             var workerPath = typeof(WorkerNodeAgent).Assembly.Location;
             await using var supervisor = new WorkerSupervisor(workerPath, capacity.MaxProcesses, capacity.MaxCpu,
-                capacity.MaxMemoryBytes, policy.MemoryLimit, config.SupervisorPath);
+                capacity.MaxMemoryBytes, policy.MemoryLimit, config.SupervisorPath,
+                nodeDirectory: policy.DataDirectory, nodeMaxProcesses: policy.MaxConcurrency);
             var agent = new WorkerNodeAgent(config, policy, capacity, certificate, supervisor);
             await agent.ListenAsync(shutdown.Token);
             return 0;

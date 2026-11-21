@@ -45,6 +45,24 @@ ud_status ud_stat_add(ud_aggregate_state *s, const ud_aggregate_def *d, const ud
     }
     return UD_OK;
 }
+int ud_stat_retractable(const ud_aggregate_def *d) {
+    return !d->distinct && (d->kind == 0 || d->kind == 1 || d->kind == 4);
+}
+ud_status ud_stat_retract(ud_aggregate_state *s, const ud_aggregate_def *d, const ud_value *v) {
+    if (!ud_stat_retractable(d))
+        return UD_UNSUPPORTED;
+    if (v->is_absent)
+        return UD_INCOMPATIBLE;
+    if (v->is_null)
+        return UD_OK;
+    if (!s->sum.count)
+        return UD_FENCED;
+    if (d->kind == 0)
+        s->sum.count--;
+    else
+        return ud_sum_update(&s->sum, v, -1);
+    return UD_OK;
+}
 ud_status ud_stat_result(const ud_aggregate_state *s, const ud_aggregate_def *d, const ud_field *f,
                          ud_value *out) {
     *out = (ud_value){.type = f->type, .precision = f->precision, .scale = f->scale};

@@ -744,7 +744,7 @@ static ud_status aggregate_pull(ud_operator *o, ud_batch **out) {
         }
         if (!s)
             s = o->raw_aggregation
-                    ? ud_accumulator_add_accepted(o->group, o->pending, o->pending_row++)
+                    ? ud_accumulator_update_accepted(o->group, o->pending, o->pending_row++, 1)
                     : ud_accumulator_merge_row(o->group, o->pending, o->pending_row++);
     }
     ud_free(values);

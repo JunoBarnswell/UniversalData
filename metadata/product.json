@@ -2,7 +2,7 @@
   "modelVersion": 2,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "8.0.0",
+    "sdkVersion": "9.0.0",
     "dotnetPackages": {
       "SqlSugarCore": "5.1.4.216",
       "MySqlConnector": "2.6.1",
@@ -12,11 +12,11 @@
     "abiVersion": 15,
     "protocolVersion": 15,
     "checkpointRevision": 4,
-    "state": "SDK 8 candidate with official SqlSugar, request-scoped Worker sessions, Native transaction participation, and fluent ETL. ABI and Package protocol remain 15.",
+    "state": "SDK 9 candidate for Native SQL connection ownership, shared Worker sessions, typed CDC and durable ETL submission. ABI and Package protocol remain 15.",
     "acceptanceResources": "Windows Release CORE and focused host acceptance use local evidence. Real MQ, Registry, multi-host and complete PRODUCT resources remain separately gated.",
     "dataLayoutRevision": 1,
     "catalogRevision": 3,
-    "workerRevision": 6
+    "workerRevision": 7
   },
   "scope": {
     "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",
@@ -32,7 +32,7 @@
   },
   "candidate": {
     "branch": "main",
-    "state": "SDK 8 fluent .NET execution and distribution candidate",
+    "state": "SDK 9 Native SQL, shared sessions and continuous ETL candidate",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null,
@@ -1560,77 +1560,77 @@
       "id": "linux-full-build",
       "status": "NotRun",
       "scope": "CORE build only; full PRODUCT driver dependency closure unverified.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "windows-full-build",
       "status": "NotRun",
       "scope": "Windows toolchain/SSIS resources unavailable.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "correctness",
       "status": "NotRun",
       "scope": "75 portable cases passed; full inherited SSIS and vendor semantics remain unverified.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "recovery",
       "status": "NotRun",
       "scope": "Portable Native Journal, process kill, window state, disk spill and same-ID recovery passed.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "external-integration",
       "status": "NotRun",
       "scope": "No current external CDC/driver acceptance resources.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "language-parity",
       "status": "NotRun",
       "scope": "Current Native/C#/Java ABI and lifecycle tests passed; complete streaming cross-host UAT remains partial.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "web",
       "status": "NotRun",
       "scope": "Actual browser core journey and 200/500/1000-node scaling passed; full UI/a11y/probe matrix partial.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "performance",
       "status": "NotRun",
       "scope": "One million events and observed batch latency/RSS recorded; one-hour soak NotRun.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "installed-consumers",
       "status": "NotRun",
       "scope": "No current distributable archive or independent installed SDK consumer run.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "source-contracts",
       "status": "NotRun",
       "scope": "Product projections, whitespace, epoch migration and C/.NET/Java compilation verified.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "release-integrity",
       "status": "NotRun",
       "scope": "Review branch only; no release archive or release certification.",
-      "reason": "Awaiting current ABI 14 acceptance evidence.",
+      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
       "evidence": []
     }
   ],
@@ -1775,12 +1775,17 @@
     {
       "ssis": "Event-time streaming / Studio observation",
       "entries": "eventTime; eventWindow; eventDeduplicate; eventJoin; Native Catalog execution feed",
-      "contract": "Native Watermark and bounded shared working subquotas. Final tumbling/sliding/session aggregates with stable RowIds. eventDeduplicate keeps the first row per key until its event-time TTL reaches the Watermark; eventJoin emits inner matches within the configured inclusive time difference and bounds state on both inputs. Both drop rows at or behind the common Watermark."
+      "contract": "Native Watermark and bounded shared working subquotas. Final tumbling/sliding/session aggregates with stable RowIds. Keyed tumbling and sliding windows with count, sum or avg can emit inserts, updates with before images, and deletes. The window state retains the revision and published value through checkpoint recovery. eventDeduplicate keeps the first row per key until its event-time TTL reaches the Watermark. eventJoin emits inner matches within the configured inclusive time difference. Deduplicate and join drop rows at or behind the common Watermark."
     },
     {
       "ssis": "Change Data Capture",
       "entries": "CDC source, sql.destination (changeset)",
       "contract": "microBatchRows and microBatchMs group complete source transactions. A sealed epoch stores original watermarks and the last log position. SQL Server sends bounded ordered statement batches. PostgreSQL uses bounded libpq pipelines and checks individual affected-row counts."
+    },
+    {
+      "ssis": "开放湖表",
+      "entries": "`iceberg.source`、`iceberg.destination`",
+      "contract": "Iceberg v2 REST Catalog 与 Parquet。Native 按固定快照读取，分批追加或按键写入，凭 Catalog 快照回执恢复。当前写入支持本地文件仓库和无分区表。"
     },
     {
       "ssis": "消息发布、订阅与消费",

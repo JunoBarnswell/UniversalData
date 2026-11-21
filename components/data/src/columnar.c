@@ -164,7 +164,7 @@ ud_status ud_batch_project(ud_context *ctx, const ud_batch *input, const uint32_
     if (!out)
         return UD_INVALID;
     *out = NULL;
-    if (!ctx || !input || input->ctx != ctx || !input->sealed || !indices || !fields || !columns ||
+    if (!ctx || !input || !input->sealed || !indices || !fields || !columns ||
         columns > 65536)
         return UD_INVALID;
     for (uint32_t j = 0; j < columns; j++) {
@@ -204,6 +204,18 @@ ud_status ud_batch_project(ud_context *ctx, const ud_batch *input, const uint32_
     }
     *out = b;
     return UD_OK;
+}
+
+ud_status ud_batch_rehome(ud_context *ctx, ud_batch **batch) {
+    if (!*batch || (*batch)->ctx == ctx)
+        return UD_OK;
+    ud_batch *view = NULL;
+    ud_status status = ud_batch_seal(*batch);
+    if (!status)
+        status = ud_batch_slice(ctx, *batch, 0, (*batch)->rows, &view);
+    ud_batch_destroy(*batch);
+    *batch = view;
+    return status;
 }
 uint32_t ud_batch_rows(const ud_batch *b) {
     return b ? b->rows : 0;

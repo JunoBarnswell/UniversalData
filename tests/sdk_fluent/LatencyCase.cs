@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Threading.Channels;
 using UniversalData;
 
 namespace FluentAcceptance;
@@ -8,167 +9,208 @@ namespace FluentAcceptance;
 internal static class LatencyCase
 {
     private const int PerSession = 500;
+    private const double RatioLimit = 1.10;
     private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(12);
 
     internal static async Task RunAsync(string policy, string slowDatabase, string fastDatabase, string origin)
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(150));
-        var token = deadline.Token;
-        var isolation = Environment.GetEnvironmentVariable("UD_TEST_FLUENT_LOAD_REQUIRE_LIMITS") != "0";
-        await using var data = DataClient.CreateBuilder(policy, "fluent")
-            .AddSqlite("slow", "Data Source=" + slowDatabase + ";Default Timeout=45")
-            .AddSqlite("fast", "Data Source=" + fastDatabase)
-            .AddHttp("pricing", new Uri(origin))
-            .AddModule(typeof(LatencyJobs).Assembly)
-            .ConfigureWorkers(options => options.MaxConcurrentSessions(4).MaxBranchesPerSession(2)
-                .MaxConnectionsPerSource(2).ExecutionTimeout(TimeSpan.FromSeconds(45))
-                .RequireResourceIsolation(isolation))
-            .Build();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(165));
         using var fixture = new HttpClient { BaseAddress = new Uri(origin), Timeout = TimeSpan.FromSeconds(10) };
-        long lease = Stopwatch.GetTimestamp();
-        var opening = await Task.WhenAll(data.OpenSessionAsync(token), data.OpenSessionAsync(token));
-        var acquire = Stopwatch.GetElapsedTime(lease).TotalMilliseconds;
-        await using var first = opening[0];
-        await using var second = opening[1];
-        var fastBudgets = new[] { Budget(first.ProcessId, isolation), Budget(second.ProcessId, isolation) };
-        await Measure(first, second, 125, token);
+        bool isolation = Environment.GetEnvironmentVariable("UD_TEST_FLUENT_LOAD_REQUIRE_LIMITS") != "0";
+        var failures = new List<string>();
+        foreach (int sessionsPerProcess in new[] { 1, 4 })
+        {
+            var mode = sessionsPerProcess == 1 ? "dedicated" : "shared";
+            await using var data = DataClient.CreateBuilder(policy, "fluent")
+                .AddSqlite("slow", "Data Source=" + slowDatabase)
+                .AddSqlite("fast", "Data Source=" + fastDatabase)
+                .AddHttp("pricing", new Uri(origin))
+                .AddModule(typeof(LatencyJobs).Assembly)
+                .ConfigureWorkers(options => options.MaxConcurrentSessions(4).MaxSessionsPerWorker(sessionsPerProcess)
+                    .MaxBranchesPerSession(2).MaxConnectionsPerSource(2).ExecutionTimeout(TimeSpan.FromSeconds(45))
+                    .RequireResourceIsolation(isolation))
+                .Build();
+
+            await MeasureShortSessions(data, mode, deadline.Token);
+            await VerifyInterference(data, fixture, mode, sessionsPerProcess, isolation, failures, deadline.Token);
+        }
+        if (failures.Count != 0)
+            throw new InvalidOperationException("Fast-request P95 exceeded 1.10 × baseline: " + string.Join(", ", failures));
+    }
+
+    private static async Task MeasureShortSessions(DataClient data, string mode, CancellationToken cancellation)
+    {
+        long started = Stopwatch.GetTimestamp();
+        var cold = await data.RunAsync(LatencyJobs.Fast, cancellation);
+        RequireLedger(cold);
+        var coldMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        started = Stopwatch.GetTimestamp();
+        var samples = new double[24];
+        var workers = new HashSet<int>();
+        for (int index = 0; index < samples.Length; index += 2)
+        {
+            var submissions = await Task.WhenAll(Run(), Run());
+            for (var offset = 0; offset < submissions.Length; offset++)
+            {
+                var (sample, worker) = submissions[offset];
+                samples[index + offset] = sample;
+                workers.Add(worker);
+            }
+        }
+        Console.WriteLine(JsonSerializer.Serialize(new { Mode = mode, Stage = "short-session", Samples = samples.Length,
+            ColdMs = coldMs, P95Ms = Percentile(samples, 0.95), P99Ms = Percentile(samples, 0.99),
+            RequestsPerSecond = samples.Length / Stopwatch.GetElapsedTime(started).TotalSeconds, WorkerPids = workers.Count }));
+
+        async Task<(double Duration, int Worker)> Run()
+        {
+            long stamp = Stopwatch.GetTimestamp();
+            var result = await data.RunAsync(LatencyJobs.Fast, cancellation);
+            RequireLedger(result);
+            return (Stopwatch.GetElapsedTime(stamp).TotalMilliseconds, result.ProcessId);
+        }
+    }
+
+    private static async Task VerifyInterference(DataClient data, HttpClient fixture, string mode,
+        int sessionsPerProcess, bool isolation, List<string> failures, CancellationToken token)
+    {
+        long acquired = Stopwatch.GetTimestamp();
+        var opened = await Task.WhenAll(data.OpenSessionAsync(token), data.OpenSessionAsync(token));
+        double acquireMs = Stopwatch.GetElapsedTime(acquired).TotalMilliseconds;
+        await using var first = opened[0];
+        await using var second = opened[1];
+        if ((first.ProcessId == second.ProcessId) != (sessionsPerProcess > 1))
+            throw new InvalidOperationException("Fast sessions were placed in the wrong physical Worker mode");
+        var fastBudgets = opened.Select(session => Budget(session.ProcessId, sessionsPerProcess, isolation)).ToArray();
+        await Measure(first, second, 100, token);
         var baseline = await Measure(first, second, PerSession, token);
-        Console.WriteLine(JsonSerializer.Serialize(new { Stage = "baseline", Samples = 2 * PerSession,
-            SessionAcquireMs = acquire, SessionPids = new[] { first.ProcessId, second.ProcessId }, Summary = baseline,
+        Console.WriteLine(JsonSerializer.Serialize(new { Mode = mode, Stage = "baseline", Samples = 2 * PerSession,
+            SessionAcquireMs = acquireMs, SessionPids = opened.Select(session => session.ProcessId), Summary = baseline,
             RequiredResourceLimits = isolation, FastBudgets = fastBudgets }));
 
-        var excess = new List<string>();
         foreach (string stage in new[] { "http", "sql", "cpu" })
         {
             using var stageCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
-            lease = Stopwatch.GetTimestamp();
+            acquired = Stopwatch.GetTimestamp();
             await using var delayed = await data.OpenSessionAsync(token);
-            acquire = Stopwatch.GetElapsedTime(lease).TotalMilliseconds;
+            acquireMs = Stopwatch.GetElapsedTime(acquired).TotalMilliseconds;
+            if ((delayed.ProcessId == first.ProcessId) != (sessionsPerProcess > 1))
+                throw new InvalidOperationException("The slow session must run in the requested physical isolation mode");
             using var process = Process.GetProcessById(delayed.ProcessId);
-            var slowBudget = Budget(delayed.ProcessId, isolation);
             var before = process.TotalProcessorTime;
+            var slowBudget = Budget(delayed.ProcessId, sessionsPerProcess, isolation);
+            string signal = mode + "-" + stage;
             if (stage == "sql") await Control(fixture, "lock", token);
-            Task work = delayed.RunAsync(LatencyJobs.Slow, stage, stageCancellation.Token);
+            var pending = delayed.RunAsync(LatencyJobs.Slow, new LatencyWork(stage, signal), stageCancellation.Token);
             try
             {
-                while (!await fixture.GetFromJsonAsync<bool>("entered/" + stage, token))
+                while (!await fixture.GetFromJsonAsync<bool>("entered/" + signal, token))
                     await Task.Delay(20, token);
                 var measure = await Measure(first, second, PerSession, token);
-                if (work.IsCompleted) throw new InvalidOperationException($"The {stage} fixture stopped before the fast samples completed");
+                if (pending.IsCompleted) throw new InvalidOperationException($"The {stage} fixture stopped before all samples completed");
                 process.Refresh();
-                double ratio = measure.P95Ms / baseline.P95Ms;
-                Console.WriteLine(JsonSerializer.Serialize(new { Stage = stage, Samples = 2 * PerSession,
-                    SlowPid = delayed.ProcessId, SessionAcquireMs = acquire, CpuMs = (process.TotalProcessorTime - before).TotalMilliseconds,
-                    ResidentBytes = process.WorkingSet64, PeakResidentBytes = process.PeakWorkingSet64,
-                    Summary = measure, Ratio = ratio, MaximumRatio = 1.10, SlowBudget = slowBudget }));
-                if (ratio > 1.10) excess.Add($"{stage}={ratio:F3}");
+                double requestRatio = measure.P95Ms / baseline.P95Ms;
+                double plannedRatio = measure.P95ScheduleToResultMs / baseline.P95ScheduleToResultMs;
+                Console.WriteLine(JsonSerializer.Serialize(new { Mode = mode, Stage = stage, Samples = 2 * PerSession,
+                    SlowPid = delayed.ProcessId, SessionAcquireMs = acquireMs,
+                    CpuMs = (process.TotalProcessorTime - before).TotalMilliseconds, ResidentBytes = process.WorkingSet64,
+                    PeakResidentBytes = process.PeakWorkingSet64, Summary = measure, RequestRatio = requestRatio,
+                    PlannedRatio = plannedRatio, MaximumRatio = RatioLimit, SlowBudget = slowBudget }));
+                if (requestRatio > RatioLimit || plannedRatio > RatioLimit)
+                    failures.Add($"{mode}/{stage} SDK {requestRatio:F3}, planned {plannedRatio:F3}");
             }
             finally
             {
-                if (stage == "http") await Control(fixture, "release/http", token);
+                if (stage == "http") await Control(fixture, "release/" + signal, token);
                 if (stage == "sql") await Control(fixture, "unlock", token);
                 if (stage == "cpu") await stageCancellation.CancelAsync();
-                try { await work.WaitAsync(TimeSpan.FromSeconds(8), token); }
+                try { await pending.WaitAsync(TimeSpan.FromSeconds(8), token); }
                 catch (OperationCanceledException) when (stage == "cpu" && !token.IsCancellationRequested) { }
                 catch (UniversalDataException error) when (stage == "cpu" && error.Code == StatusCode.Cancelled) { }
             }
         }
-        if (excess.Count != 0) throw new InvalidOperationException("Fast-request P95 exceeded 1.10 × baseline: " + string.Join(", ", excess));
     }
 
-    private static async Task Control(HttpClient fixture, string path, CancellationToken token)
+    private static async Task Control(HttpClient fixture, string path, CancellationToken cancellation)
     {
-        using var response = await fixture.GetAsync(path, token);
+        using var response = await fixture.GetAsync(path, cancellation);
         response.EnsureSuccessStatusCode();
     }
 
-    private sealed record ResourceBudget(string ControlGroup, long CpuQuotaUs, long CpuPeriodUs, long MaxMemoryBytes);
+    private static void RequireLedger(FastTiming result)
+    {
+        if (result.Value != "ledger") throw new InvalidOperationException("The fast SQL request returned an unexpected row");
+    }
 
-    private static ResourceBudget? Budget(int pid, bool required)
+    private static object? Budget(int processId, int sessionsPerProcess, bool required)
     {
         if (!OperatingSystem.IsLinux() || !required) return null;
-        var membership = File.ReadLines($"/proc/{pid}/cgroup").Single(line => line.StartsWith("0::", StringComparison.Ordinal))[3..];
+        var membership = File.ReadLines($"/proc/{processId}/cgroup").Single(line => line.StartsWith("0::", StringComparison.Ordinal))[3..];
         var directory = Path.Combine("/sys/fs/cgroup", membership.TrimStart('/'));
-        var cpu = File.ReadAllText(Path.Combine(directory, "cpu.max")).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        if (cpu.Length != 2 || !long.TryParse(cpu[0], out long quota) || !long.TryParse(cpu[1], out long period) ||
-            quota != 100_000 || period != 100_000 ||
-            !long.TryParse(File.ReadAllText(Path.Combine(directory, "memory.max")), out long memory) || memory != 536_870_912)
-            throw new InvalidOperationException($"Worker {pid} cgroup did not reserve the configured single CPU and 512 MiB process budget");
-        return new(membership, quota, period, memory);
+        string cpuQuota = File.ReadAllText(Path.Combine(directory, "cpu.max")).Trim();
+        string memoryLimit = File.ReadAllText(Path.Combine(directory, "memory.max")).Trim();
+        if (cpuQuota != $"{100_000 * sessionsPerProcess} 100000" ||
+            memoryLimit != ((long)(sessionsPerProcess + 1) * 268_435_456).ToString())
+            throw new InvalidOperationException($"Worker {processId} cgroup does not have the configured aggregate CPU and memory budget");
+        return new { ControlGroup = membership, CpuQuota = cpuQuota, MemoryLimit = memoryLimit };
     }
 
-    private sealed record Summary(double P95Ms, double P95ScheduleToResultMs, double P95DispatchDelayMs,
-        double P95ConnectionLeaseMs, double P95SqlMs, double ObservedRequestsPerSecond, int Timeouts);
-
-    private sealed record Sample(double RequestMs, double ScheduleToResultMs, double DispatchMs, FastTiming Timing);
-
-    private static async Task<Summary> Measure(DataSession first, DataSession second, int samples, CancellationToken token)
+    private static async Task<LatencySummary> Measure(DataSession first, DataSession second, int samples, CancellationToken token)
     {
-        long start = Stopwatch.GetTimestamp();
-        async Task<Sample[]> RunLane(DataSession session, double offset)
+        var arrival = new[] { Channel.CreateUnbounded<long>(), Channel.CreateUnbounded<long>() };
+        long started = Stopwatch.GetTimestamp() + Stopwatch.Frequency / 10;
+        long step = (long)(Interval.TotalSeconds * Stopwatch.Frequency / 2);
+        var producer = new Thread(() =>
         {
-            var result = new Sample[samples];
-            for (int i = 0; i < samples; i++)
+            try
             {
-                var scheduled = Interval * (i + offset);
-                var wait = scheduled - Stopwatch.GetElapsedTime(start);
-                if (wait > TimeSpan.Zero) await Task.Delay(wait, token);
-                long submitted = Stopwatch.GetTimestamp();
-                var row = await session.RunAsync(LatencyJobs.Fast, token);
-                long completed = Stopwatch.GetTimestamp();
-                if (row.Value != "ledger") throw new InvalidOperationException("The fast SQL request returned an unexpected row");
-                result[i] = new(Stopwatch.GetElapsedTime(submitted, completed).TotalMilliseconds,
-                    (Stopwatch.GetElapsedTime(start, completed) - scheduled).TotalMilliseconds,
-                    Math.Max((Stopwatch.GetElapsedTime(start, submitted) - scheduled).TotalMilliseconds, 0), row);
+                for (int index = 0; index < samples * 2; index++)
+                {
+                    long scheduled = started + index * step;
+                    while (Stopwatch.GetTimestamp() < scheduled)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), scheduled).TotalMilliseconds > 1.5)
+                            Thread.Sleep(1);
+                        else Thread.SpinWait(64);
+                    }
+                    arrival[index % 2].Writer.TryWrite(scheduled);
+                }
             }
-            return result;
+            catch (OperationCanceledException) { }
+            finally
+            {
+                foreach (var lane in arrival) lane.Writer.TryComplete();
+            }
+        }) { IsBackground = true };
+        producer.Start();
+        var reports = await Task.WhenAll(Consume(first, arrival[0]), Consume(second, arrival[1]));
+        var data = reports.SelectMany(rows => rows).ToArray();
+        return new(Percentile(data.Select(row => row.RequestMs), 0.95), Percentile(data.Select(row => row.RequestMs), 0.99),
+            Percentile(data.Select(row => row.PlannedMs), 0.95), Percentile(data.Select(row => row.PlannedMs), 0.99),
+            Percentile(data.Select(row => row.DispatchMs), 0.95), Percentile(data.Select(row => row.Timing.ConnectionLeaseMs), 0.95),
+            Percentile(data.Select(row => row.Timing.SqlMs), 0.95), data.Length / Stopwatch.GetElapsedTime(started).TotalSeconds);
+
+        async Task<List<(double RequestMs, double PlannedMs, double DispatchMs, FastTiming Timing)>> Consume(DataSession session, Channel<long> lane)
+        {
+            var rows = new List<(double, double, double, FastTiming)>(samples);
+            await foreach (long scheduled in lane.Reader.ReadAllAsync(token))
+            {
+                long submitted = Stopwatch.GetTimestamp();
+                var result = await session.RunAsync(LatencyJobs.Fast, token);
+                long completed = Stopwatch.GetTimestamp();
+                RequireLedger(result);
+                rows.Add((Stopwatch.GetElapsedTime(submitted, completed).TotalMilliseconds,
+                    Stopwatch.GetElapsedTime(scheduled, completed).TotalMilliseconds,
+                    Stopwatch.GetElapsedTime(scheduled, submitted).TotalMilliseconds, result));
+            }
+            if (rows.Count != samples) throw new InvalidOperationException("The planned arrival schedule did not complete");
+            return rows;
         }
-        var result = (await Task.WhenAll(RunLane(first, 0), RunLane(second, 0.5))).SelectMany(rows => rows).ToArray();
-        var elapsed = Stopwatch.GetElapsedTime(start).TotalSeconds;
-        return new(P95(result.Select(row => row.RequestMs)), P95(result.Select(row => row.ScheduleToResultMs)),
-            P95(result.Select(row => row.DispatchMs)),
-            P95(result.Select(row => row.Timing.ConnectionLeaseMs)), P95(result.Select(row => row.Timing.SqlMs)),
-            result.Length / elapsed, 0);
     }
 
-    private static double P95(IEnumerable<double> input)
+    private static double Percentile(IEnumerable<double> samples, double percentile)
     {
-        var sorted = input.Order().ToArray();
-        return sorted[(int)Math.Ceiling(sorted.Length * 0.95) - 1];
-    }
-}
-
-public sealed record FastTiming(string Value, double ConnectionLeaseMs, double SqlMs);
-
-public static class LatencyJobs
-{
-    public static Task<FastTiming> Fast(DataContext context, CancellationToken cancellation)
-    {
-        long start = Stopwatch.GetTimestamp();
-        return context.Database("fast").UseAsync(async (database, _) =>
-        {
-            long leased = Stopwatch.GetTimestamp();
-            var row = await database.Queryable<FixtureRow>().Where(value => value.Id == 1).FirstAsync();
-            return new FastTiming(row.Tag, Stopwatch.GetElapsedTime(start, leased).TotalMilliseconds,
-                Stopwatch.GetElapsedTime(leased).TotalMilliseconds);
-        }, cancellation);
-    }
-
-    public static async Task Slow(DataContext context, string stage, CancellationToken cancellation)
-    {
-        if (stage == "http")
-        {
-            _ = await context.Http("pricing").GetAsync<bool>("hold/http", cancellation);
-            return;
-        }
-        _ = await context.Http("pricing").GetAsync<bool>("signal/" + stage, cancellation);
-        if (stage == "sql")
-        {
-            _ = await context.Database("slow").UseAsync(async (database, _) => await database.Ado.ExecuteCommandAsync(
-                "UPDATE sdk_orders SET Tag = Tag WHERE Id = 1"), cancellation);
-            return;
-        }
-        while (!cancellation.IsCancellationRequested) Thread.SpinWait(4096);
-        cancellation.ThrowIfCancellationRequested();
+        var sorted = samples.Order().ToArray();
+        return sorted[(int)Math.Ceiling(sorted.Length * percentile) - 1];
     }
 }

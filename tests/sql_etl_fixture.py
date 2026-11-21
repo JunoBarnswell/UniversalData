@@ -1,16 +1,20 @@
 """Use only per-run SQLite files or explicitly provided external SQL fixtures."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+
+from product_version import PROTOCOL_VERSION
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin", required=True)
     parser.add_argument("--native-test")
+    parser.add_argument("--pool-test")
     parser.add_argument("--dotnet")
     parser.add_argument("--assembly")
     parser.add_argument("--provider", default="sqlite")
@@ -19,6 +23,13 @@ def main():
     with tempfile.TemporaryDirectory(prefix="ud-v14-sql-tests-") as temporary:
         directory = Path(temporary)
         sqlite = directory / "fixture.db"
+        if args.pool_test:
+            package = {"version": PROTOCOL_VERSION, "id": "pool-fixture",
+                       "connections": [{"id": "db", "driver": str(Path(args.plugin).resolve()),
+                                        "resource": "pool-resource", "credentialReference": "database"}],
+                       "controlFlow": {"tasks": [], "constraints": []}, "dataFlows": []}
+            return subprocess.run([args.pool_test, json.dumps(package), str(sqlite),
+                                   str(directory / "rotated.db")], check=False).returncode
         if args.native_test:
             return subprocess.run([args.native_test, args.plugin, str(sqlite)], check=False).returncode
         if not args.dotnet or not args.assembly:

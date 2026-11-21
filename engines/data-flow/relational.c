@@ -741,7 +741,7 @@ ud_status ud_relational_register(ud_registry *registry) {
             .diagnostics = diagnostics,
             .describe_plan = describe,
             .input_demand = demand,
-            .state_version = 1,
+            .state_version = k == UD_OPERATOR_EVENT_WINDOW ? 2 : 1,
             .checkpoint = checkpoint,
             .restore = restore_state};
         if (k >= UD_OPERATOR_EVENT_WINDOW)

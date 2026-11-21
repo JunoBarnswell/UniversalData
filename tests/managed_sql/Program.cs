@@ -24,7 +24,8 @@ if (args.Contains("--stream-copy", StringComparer.Ordinal))
     await ManagedSqlStreamScale.RunAsync(options);
     return 0;
 }
-using var client = SqlNative.Open(options.Provider, Path.GetFullPath(options.PluginPath), options.ConnectionString);
+using var fixture = OpenFixture(options.Provider, Path.GetFullPath(options.PluginPath), options.ConnectionString);
+var client = fixture.Session;
 if (options.SetupSqlPath is not null)
     Execute(client, File.ReadAllText(options.SetupSqlPath));
 

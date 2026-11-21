@@ -12,13 +12,13 @@ internal sealed class SdkSessionHostClient(Process process, Task stderr, SdkHost
     internal int ProcessId => process.Id;
 
     internal static async Task<SdkSessionHostClient> StartAsync(string policyFile, string tenant,
-        SdkHostOptions options, CancellationToken cancellation, string? workerPath = null)
+        SdkHostOptions options, SdkModule[] modules, CancellationToken cancellation, string? workerPath = null)
     {
         string path = FindWorker(workerPath);
         bool isDll = Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase);
         CheckDeploymentVersion(isDll ? path : Path.ChangeExtension(path, ".dll"));
         var configuration = new SdkHostConfiguration(ProductInfo.WorkerRevision, Path.GetFullPath(policyFile),
-            tenant, options, SdkSessionProtocol.CreateEndpoint(), SdkSessionProtocol.CreateCapability());
+            tenant, options, modules, SdkSessionProtocol.CreateEndpoint(), SdkSessionProtocol.CreateCapability());
         string executable = isDll ? Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet" : path;
         var start = new ProcessStartInfo(executable)
         {
@@ -59,7 +59,7 @@ internal sealed class SdkSessionHostClient(Process process, Task stderr, SdkHost
         }
     }
 
-    internal async Task<WorkerSession> OpenAsync(CancellationToken cancellation)
+    internal async Task<WorkerSession> OpenAsync(CancellationToken cancellation, bool dedicated)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation, lifetime.Token);
@@ -69,7 +69,7 @@ internal sealed class SdkSessionHostClient(Process process, Task stderr, SdkHost
             await using var endpoint = SdkSessionProtocol.Connect(configuration.Endpoint);
             await endpoint.ConnectAsync(timeout.Token).ConfigureAwait(false);
             await WorkerProtocol.WriteAsync(endpoint,
-                new SdkPipeAdmission(ProductInfo.WorkerRevision, configuration.Capability), null, timeout.Token)
+                new SdkPipeAdmission(ProductInfo.WorkerRevision, configuration.Capability, Dedicated: dedicated), null, timeout.Token)
                 .ConfigureAwait(false);
             var response = await WorkerProtocol.ReadAsync<SdkHostStatus>(endpoint, timeout.Token).ConfigureAwait(false);
             using (response.Batch)

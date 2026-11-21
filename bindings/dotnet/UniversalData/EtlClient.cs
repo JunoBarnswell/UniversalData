@@ -23,7 +23,7 @@ public sealed class EtlClient(DataClient client)
         uint sourceRows = 1000, uint sampleRows = 32, string parameters = "{}",
         CancellationToken cancellationToken = default)
     {
-        await using var worker = await client.OpenWorkerAsync(cancellationToken).ConfigureAwait(false);
+        await using var worker = await client.OpenWorkerAsync(cancellationToken, dedicated: true).ConfigureAwait(false);
         return await PreviewAsync(worker, package, pipeline, component, sourceRows, sampleRows, parameters,
             [], cancellationToken).ConfigureAwait(false);
     }
@@ -51,7 +51,7 @@ public sealed class EtlClient(DataClient client)
     private async Task<JsonElement> InspectAsync(string operation, Package package, string parameters,
         string? connection, string? table, CancellationToken cancellationToken)
     {
-        await using var worker = await client.OpenWorkerAsync(cancellationToken).ConfigureAwait(false);
+        await using var worker = await client.OpenWorkerAsync(cancellationToken, dedicated: true).ConfigureAwait(false);
         return await InspectAsync(worker, operation, package, [], parameters, connection, table,
             cancellationToken).ConfigureAwait(false);
     }
@@ -85,7 +85,7 @@ public sealed class EtlClient(DataClient client)
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         if (!Guid.TryParseExact(ticket, "N", out _))
             throw new ArgumentException("Invalid Native Journal ticket", nameof(ticket));
-        var worker = await client.OpenWorkerAsync(cancellationToken).ConfigureAwait(false);
+        var worker = await client.OpenWorkerAsync(cancellationToken, dedicated: true).ConfigureAwait(false);
         try
         {
             var package = await compile(worker, cancellationToken).ConfigureAwait(false);

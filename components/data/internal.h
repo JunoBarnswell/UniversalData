@@ -62,6 +62,7 @@ ud_status ud_batch_copy_row_info(ud_batch *, uint32_t, const ud_batch *, uint32_
 ud_status ud_batch_join_row_info(ud_batch *, uint32_t, const ud_batch *, uint32_t, const ud_batch *,
                                  uint32_t);
 ud_status ud_batch_clone(const ud_batch *, ud_batch **);
+ud_status ud_batch_rehome(ud_context *, ud_batch **);
 ud_status ud_encode_batch(ud_bytes *, const ud_batch *);
 ud_status ud_decode_batch(ud_bytes *, ud_batch **);
 /* Temporary Buffer Manager pages use a private Wire layout. */

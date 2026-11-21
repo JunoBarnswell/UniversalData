@@ -64,6 +64,17 @@ public static class Jobs
         return await Read(context, request.Source, cancellation);
     }
 
+    public static Task<string> HoldLeaseThenRead(DataContext context, HeldRead request, CancellationToken cancellation) =>
+        context.Database(request.Source).UseAsync(async (database, token) =>
+        {
+            var before = await database.Queryable<FixtureRow>().Where(row => row.Id == 1).FirstAsync();
+            if (!await context.Http("pricing").GetAsync<bool>("hold/" + request.Gate, token))
+                throw new InvalidOperationException("The HTTP fixture could not keep the physical lease open");
+            var after = await database.Queryable<FixtureRow>().Where(row => row.Id == 1).FirstAsync();
+            if (before.Tag != after.Tag) throw new InvalidOperationException("A borrowed physical connection changed source");
+            return after.Tag;
+        }, cancellation);
+
     public static async Task VerifyLedger(DataContext context, CancellationToken cancellation)
     {
         if (await Read(context, "ledger", cancellation) != "ledger")

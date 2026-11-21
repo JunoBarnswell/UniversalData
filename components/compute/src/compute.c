@@ -198,7 +198,7 @@ void ud_accumulator_destroy(ud_accumulator *a) {
     ud_free(a);
 }
 static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, uint32_t end,
-                          int filtered) {
+                          int filtered, int direction) {
     const ud_plan *p = a->plan;
     UD_TRY(ud_plan_check_batch(p, b));
     for (uint32_t r = begin; r < end; r++) {
@@ -230,12 +230,15 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, 
             if (k == p->key_n)
                 break;
         }
+        if (!g && direction < 0)
+            return UD_FENCED;
         if (!g)
             UD_TRY(new_group(a, b, r, hash, &g));
         ud_row_info provenance;
         UD_TRY(ud_batch_row_info(b, r, &provenance));
-        g->flags |= provenance.flags;
-        if (provenance.flags)
+        if (direction > 0)
+            g->flags |= provenance.flags;
+        if (direction > 0 && provenance.flags)
             g->rule = provenance.rule;
         for (uint32_t i = 0; i < p->agg_n; i++) {
             const ud_aggregate_def *def = p->aggs + i;
@@ -248,7 +251,8 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, 
             ud_value input = {.type = UD_INT64};
             if (def->column != UINT32_MAX)
                 UD_TRY(ud_batch_get(b, r, def->column, &input));
-            UD_TRY(ud_stat_add(g->states + i, def, &input));
+            UD_TRY(direction > 0 ? ud_stat_add(g->states + i, def, &input)
+                                 : ud_stat_retract(g->states + i, def, &input));
         }
     }
     return UD_OK;
@@ -256,16 +260,17 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, 
 ud_status ud_accumulator_add(ud_accumulator *a, const ud_batch *b) {
     if (!a || a->failed)
         return UD_INVALID;
-    ud_status s = add_rows(a, b, 0, ud_batch_rows(b), 1);
+    ud_status s = add_rows(a, b, 0, ud_batch_rows(b), 1, 1);
     if (s)
         a->failed = 1;
     return s;
 }
 
-ud_status ud_accumulator_add_accepted(ud_accumulator *a, const ud_batch *b, uint32_t row) {
-    if (!a || a->failed)
+ud_status ud_accumulator_update_accepted(ud_accumulator *a, const ud_batch *b, uint32_t row,
+                                        int direction) {
+    if (!a || a->failed || (direction != 1 && direction != -1))
         return UD_INVALID;
-    ud_status status = add_rows(a, b, row, row + 1, 0);
+    ud_status status = add_rows(a, b, row, row + 1, 0, direction);
     if (status)
         a->failed = 1;
     return status;

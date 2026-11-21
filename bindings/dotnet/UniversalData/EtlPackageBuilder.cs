@@ -42,6 +42,33 @@ public sealed class EtlPackageBuilder(string id)
             readMode = stream ? "stream" : "snapshot", batchSize, parameters,
             schemaPolicy = table is null ? null : new { policy = "compatible" } });
 
+    public EtlPackageBuilder ChangeSource(string name, string connection, DataSourceKind provider, string table,
+        JsonElement schema, EtlChangeOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        string component = provider switch
+        {
+            DataSourceKind.PostgreSql => "postgresql.cdc.source",
+            DataSourceKind.MySql => "mysql.cdc.source",
+            DataSourceKind.MariaDb => "mariadb.cdc.source",
+            DataSourceKind.SqlServer => "sqlserver.cdc.source",
+            DataSourceKind.Oracle => "oracle.cdc.source",
+            _ => throw new UniversalDataException((int)StatusCode.Unsupported, "The provider has no Native CDC source")
+        };
+        if ((provider is DataSourceKind.MySql or DataSourceKind.MariaDb) && options.ServerId is null or 0)
+            throw new ArgumentException("MySQL and MariaDB CDC require a distinct replication server ID", nameof(options));
+        if (options.Position is not null)
+            ArgumentException.ThrowIfNullOrWhiteSpace(options.Position);
+        return Component(name, component, new
+        {
+            connection, table, schema,
+            mode = options.Position is null ? "snapshotAndStream" : "stream",
+            options.Position, options.Slot, options.Publication, options.ServerId,
+            options.MaxTransactions, options.MicroBatchRows,
+            microBatchMs = options.MicroBatchMilliseconds, schemaPolicy = new { policy = "compatible" }
+        });
+    }
+
     public EtlPackageBuilder RestSource(string name, string connection, JsonElement schema,
         string? url = null, HttpHeaderDefinition[]? headers = null, uint batchSize = 4096,
         string? caConnection = null, string? rowsField = null, string? cursorField = null,
@@ -56,7 +83,25 @@ public sealed class EtlPackageBuilder(string id)
 
     internal EtlPackageBuilder SqlDestination(string name, string connection, string table, string mode,
         SqlColumnMapping[]? mapping, int[]? keys, string? delivery, bool? provisionReceipts) =>
-        Component(name, "sql.destination", new { connection, table, mode, mapping, keys, delivery, provisionReceipts });
+        Component(name, "sql.destination", new { connection, table, mode, mapping, keys, delivery,
+            provisionReceipts, beforeField = mode == "changeset" ? "before" : null });
+
+    public EtlPackageBuilder IcebergDestination(string name, string connection, string storageConnection,
+        string tableNamespace, string table, string mode = "append", int[]? keys = null,
+        string? warehouse = null, string? beforeField = null) =>
+        Component(name, "iceberg.destination", new
+        {
+            connection, storageConnection, @namespace = tableNamespace, table, mode,
+            keys = keys is { Length: > 0 } ? keys : null, warehouse, beforeField
+        });
+
+    public EtlPackageBuilder IcebergSource(string name, string connection, string storageConnection,
+        string tableNamespace, string table, JsonElement schema, long? snapshotId = null,
+        uint? batchSize = null, string? warehouse = null) =>
+        Component(name, "iceberg.source", new
+        {
+            connection, storageConnection, @namespace = tableNamespace, table, schema, snapshotId, batchSize, warehouse
+        });
 
     public EtlPackageBuilder SqlCommand(string name, string connection, string statement,
         IReadOnlyList<uint> parameters) => Component(name, "sql.command", new { connection, statement, parameters });
@@ -131,5 +176,3 @@ public sealed class EtlPackageBuilder(string id)
         return this;
     }
 }
-
-internal sealed record SqlColumnMapping(string Source, string Target);

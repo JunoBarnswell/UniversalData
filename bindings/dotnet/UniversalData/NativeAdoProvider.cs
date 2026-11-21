@@ -7,7 +7,7 @@ using SugarDbType = SqlSugar.DbType;
 
 namespace UniversalData;
 
-internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
+internal sealed class NativeAdoProvider : AdoProvider, IAdo
 {
     private readonly SqlSessionHandle handle;
     private readonly SqlSugarProvider context;
@@ -15,10 +15,10 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
     private readonly CancellationToken lifetime;
     private readonly bool ownsSession;
     private readonly object operations = new();
-    private EnlistedDataReader? reader;
+    private NativeDataReader? reader;
     private bool disposed;
 
-    internal EnlistedAdoProvider(SqlSugarProvider context, SqlSessionHandle handle, SugarDbType dialect,
+    internal NativeAdoProvider(SqlSugarProvider context, SqlSessionHandle handle, SugarDbType dialect,
         CancellationToken cancellationToken, bool ownsSession)
     {
         this.context = context;
@@ -28,7 +28,7 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
         lifetime = cancellationToken;
         CommandTimeOut = 30;
         IsDisableMasterSlaveSeparation = true;
-        base.Transaction = CoordinatorTransaction.Instance;
+        base.Transaction = NativeCoordinatorTransaction.Instance;
     }
 
     public override SqlSugarProvider Context
@@ -44,7 +44,7 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
     }
     IDbTransaction IAdo.Transaction
     {
-        get => CoordinatorTransaction.Instance;
+        get => NativeCoordinatorTransaction.Instance;
         set => throw CoordinatorOwnsTransaction();
     }
 
@@ -118,7 +118,7 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
     public override Task<DataSet> GetDataSetAllAsync(string sql, params SugarParameter[] parameters) =>
         Task.Run(() => GetDataSetAll(sql, parameters), lifetime);
 
-    private EnlistedDataReader OpenReader(string sql, SugarParameter[] parameters, int mode) => InOperation(_ =>
+    private NativeDataReader OpenReader(string sql, SugarParameter[] parameters, int mode) => InOperation(_ =>
     {
         parameters ??= [];
         DemandCommand(parameters);
@@ -131,7 +131,7 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
             try
             {
                 if (shape is null) throw new UniversalDataException((int)StatusCode.Protocol, "The native cursor returned no schema.");
-                return reader = new EnlistedDataReader(this, SqlNative.SchemaJson(shape));
+                return reader = new NativeDataReader(this, SqlNative.SchemaJson(shape));
             }
             catch { SqlNative.ReadClose(handle); throw; }
         }
@@ -154,7 +154,7 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
         catch { rows?.Dispose(); throw; }
     }, cancellationToken);
 
-    internal void CloseReader(EnlistedDataReader owner)
+    internal void CloseReader(NativeDataReader owner)
     {
         lock (operations)
         {
@@ -165,13 +165,34 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
         }
     }
 
+    // SqlSugar's PostgreSQL and Oracle binders reject the Native ABI names for
+    // these CLR-compatible values. Keep the Native schema and scalar payload
+    // unchanged; expose only the provider's canonical metadata name here.
+    internal string GetDataTypeName(string nativeType) => dialect switch
+    {
+        SugarDbType.PostgreSQL when nativeType == "int64" => "bigint",
+        SugarDbType.PostgreSQL when nativeType == "utf8" => "text",
+        SugarDbType.PostgreSQL when nativeType == "decimal128" => "numeric",
+        SugarDbType.Oracle when nativeType == "utf8" => "varchar2",
+        SugarDbType.Oracle when nativeType == "decimal128" => "decimal",
+        _ => nativeType
+    };
+
     internal int Write<T>(string table, IReadOnlyList<EntityMember> members, uint[] keys,
         IEnumerable<T> rows, int chunkRows, int mode) => InOperation(token =>
     {
+        // Oracle's ALL_TAB_COLUMNS contract publishes unquoted identifiers in
+        // uppercase, while SqlSugar attributes conventionally retain the
+        // source casing.  The native writer validates the batch schema against
+        // that metadata byte-for-byte.  Adapt only the ABI field names used by
+        // this provider; CLR member access and values remain unchanged.
+        var providerMembers = dialect == SugarDbType.Oracle
+            ? members.Select(member => member with { ColumnName = member.ColumnName.ToUpperInvariant() }).ToArray()
+            : members;
         using var input = rows.GetEnumerator();
         if (!input.MoveNext()) return 0;
-        using var schema = SqlNative.SchemaFromJson(SqlNative.Context(handle), EntityMapping.FormatSchema(members));
-        using var pinned = new SqlBatchBuilder.PinnedValues(members.Count);
+        using var schema = SqlNative.SchemaFromJson(SqlNative.Context(handle), EntityMapping.FormatSchema(providerMembers));
+        using var pinned = new SqlBatchBuilder.PinnedValues(providerMembers.Count);
         using var name = new NativeStrings(table);
         var keyPin = keys.Length == 0 ? default : GCHandle.Alloc(keys, GCHandleType.Pinned);
         SqlBatchHandle? batch = null;
@@ -198,7 +219,7 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
             try
             {
                 batch?.Dispose();
-                batch = SqlBatchBuilder.BuildChunk(SqlNative.Context(handle), schema, members, input, pinned,
+                batch = SqlBatchBuilder.BuildChunk(SqlNative.Context(handle), schema, providerMembers, input, pinned,
                     capacity, token, out var more);
                 data = batch.DangerousGetHandle();
                 last = more ? 0 : 1;
@@ -215,14 +236,14 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
     private void DemandCommand(SugarParameter[] parameters)
     {
         if (CommandType != System.Data.CommandType.Text)
-            throw Unsupported("A participant accepts only text commands.");
+        throw Unsupported("A native participant accepts only text commands.");
         foreach (var parameter in parameters)
             // SqlSugar's scalar constructors leave Direction unset, which its providers treat as input.
             if (parameter.Direction is not (0 or ParameterDirection.Input) || parameter.IsArray ||
                 parameter.IsJson || parameter.IsRefCursor || parameter.IsClob || parameter.IsNClob ||
                 parameter.IsNvarchar2 || parameter.CustomDbType is not null ||
                 !string.IsNullOrEmpty(parameter.TypeName) || !string.IsNullOrEmpty(parameter.UdtTypeName))
-                throw Unsupported("The native transaction accepts scalar input parameters.");
+                throw Unsupported("The native participant accepts scalar input parameters.");
     }
 
     private SqlBatchHandle? Parameters(SugarParameter[] parameters) => parameters.Length == 0 ? null :
@@ -230,7 +251,7 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
 
     private static IntPtr Pointer(SqlBatchHandle? batch) => batch?.DangerousGetHandle() ?? IntPtr.Zero;
 
-    internal OperationLease EnterOperation(EnlistedDataReader? owner)
+    internal OperationLease EnterOperation(NativeDataReader? owner)
     {
         if (Monitor.IsEntered(operations) || !Monitor.TryEnter(operations)) throw Busy();
         try
@@ -294,13 +315,13 @@ internal sealed class EnlistedAdoProvider : AdoProvider, IAdo
     }
 
     private static UniversalDataException Busy() => new((int)StatusCode.Busy,
-        "The transaction participant already has an active command or reader.");
+        "The native participant already has an active command or reader.");
     internal static UniversalDataException Unsupported(string reason) => new((int)StatusCode.Unsupported, reason);
     internal static UniversalDataException CoordinatorOwnsTransaction() => Unsupported("The native coordinator owns the transaction decision.");
 
-    private sealed class CoordinatorTransaction : IDbTransaction
+    private sealed class NativeCoordinatorTransaction : IDbTransaction
     {
-        internal static readonly CoordinatorTransaction Instance = new();
+        internal static readonly NativeCoordinatorTransaction Instance = new();
         public IDbConnection? Connection => null;
         public IsolationLevel IsolationLevel => IsolationLevel.Unspecified;
         public void Commit() => throw CoordinatorOwnsTransaction();

@@ -650,7 +650,7 @@ static ud_status bind_fields(ud_context *ctx,const ud_field *bound,uint32_t prio
 }
 ud_status ud_schema_bind_identity(ud_context *ctx, const ud_batch *bound,
                                   const ud_batch *discovered, ud_batch **out) {
-    if (!ctx || !bound || !discovered || !out || bound->ctx != ctx || discovered->ctx != ctx)
+    if (!ctx || !bound || !discovered || !out)
         return UD_INVALID;
     *out = NULL;
     ud_field *fields=NULL;

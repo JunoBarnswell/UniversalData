@@ -42,6 +42,9 @@ public sealed class DataClient : IAsyncDisposable
     public async Task<DataSession> OpenSessionAsync(CancellationToken cancellation = default) =>
         new(this, await OpenWorkerAsync(cancellation).ConfigureAwait(false));
 
+    public async Task<DataSession> OpenIsolatedSessionAsync(CancellationToken cancellation = default) =>
+        new(this, await OpenWorkerAsync(cancellation, dedicated: true).ConfigureAwait(false));
+
     public async Task RunAsync(Func<DataContext, CancellationToken, Task> method, CancellationToken cancellation = default)
     {
         await using var session = await OpenSessionAsync(cancellation).ConfigureAwait(false);
@@ -80,7 +83,7 @@ public sealed class DataClient : IAsyncDisposable
 
     internal SdkSourceBinding GetBinding(string? name) => DataContext.ResolveBinding(Sources.Snapshot(), name, DefaultSource, false);
 
-    internal async Task<WorkerSession> OpenWorkerAsync(CancellationToken cancellation)
+    internal async Task<WorkerSession> OpenWorkerAsync(CancellationToken cancellation, bool dedicated = false)
     {
         Task<SdkSessionHostClient> pending;
         lock (gate)
@@ -90,12 +93,12 @@ public sealed class DataClient : IAsyncDisposable
             pending = host ??= Task.Run(StartHostAsync);
         }
         var ready = await pending.WaitAsync(cancellation).ConfigureAwait(false);
-        return await ready.OpenAsync(cancellation).ConfigureAwait(false);
+        return await ready.OpenAsync(cancellation, dedicated).ConfigureAwait(false);
     }
 
     private async Task<SdkSessionHostClient> StartHostAsync()
     {
-        var launched = await SdkSessionHostClient.StartAsync(policyFile, tenant, options, lifetime.Token, workerPath)
+        var launched = await SdkSessionHostClient.StartAsync(policyFile, tenant, options, Modules, lifetime.Token, workerPath)
             .ConfigureAwait(false);
         try
         {

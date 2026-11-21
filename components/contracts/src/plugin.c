@@ -319,8 +319,6 @@ struct ud_connection {
     uint64_t capabilities;
     int cursor, transaction, cdc, cdc_transaction, io_action, cleanup;
     ud_string message_source, message_confirmation;
-    void *endpoint_user;
-    ud_authorize_fn endpoint_grant;
     char resource_namespace[33];
     char transaction_branch[65];
     uint8_t transaction_digest[32];
@@ -357,12 +355,9 @@ static ud_status authorize_connection(ud_connection *c, int32_t action) {
 }
 static ud_status authorize_endpoint(void *user, ud_string endpoint) {
     ud_connection *c = user;
-    if (!c->endpoint_grant || !valid_string(endpoint, 1))
+    if (!c->options.authorize || !valid_string(endpoint, 1))
         return UD_AUTH;
-    return c->endpoint_grant(c->endpoint_user, c->options.tenant, endpoint, UD_ACCESS_NETWORK) ==
-                   UD_OK
-               ? UD_OK
-               : UD_AUTH;
+    return authorize_resource(c, endpoint, UD_ACCESS_NETWORK);
 }
 static ud_status connection_check(void *user) {
     ud_connection *c = user;
@@ -527,8 +522,6 @@ ud_status ud_connection_open_resolved(ud_plugin *p, const ud_connection_options 
         return UD_RESOURCE;
     c->options = *options;
     c->ctx = p->ctx;
-    c->endpoint_user = options->authorize_user;
-    c->endpoint_grant = options->authorize;
     c->io_action = UD_ACCESS_OPEN;
     c->options.tenant.data = ud_strdup_n(p->ctx, options->tenant.data, options->tenant.length);
     c->options.resource.data =
@@ -917,10 +910,26 @@ ud_status ud_connection_write(ud_connection *c, const ud_write_options *options,
     UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
     uint8_t digest[32];
     int response = options->delivery == UD_DELIVERY_RESPONSE;
-    ud_status s = response ? UD_OK : ud_connection_digest(c, options, batch, digest);
+    ud_status s = UD_OK;
+    ud_write_options local = *options;
+    ud_batch *native = NULL, *before = NULL;
+    if (batch->ctx != c->ctx) {
+        s = ud_batch_slice(c->ctx, batch, 0, batch->rows, &native);
+        if (!s && options->before)
+            s = ud_batch_slice(c->ctx, options->before, 0, options->before->rows, &before);
+        if (!s) {
+            batch = native;
+            local.before = before;
+            options = &local;
+        }
+    }
+    if (!s && !response)
+        s = ud_connection_digest(c, options, batch, digest);
     if (!s)
         s = c->api->write(c->instance->state, c->options.tenant, options, batch,
                           response ? NULL : digest);
+    ud_batch_destroy(before);
+    ud_batch_destroy(native);
     if (s && options->affected_rows)
         *options->affected_rows = 0;
     connection_leave(c);
@@ -1498,7 +1507,7 @@ ud_status ud_connection_cdc_schema(ud_connection *c, ud_batch **out) {
     return ud_batch_create(c->ctx, c->cdc_schema->schema->fields, c->cdc_schema->columns, 0, out);
 }
 ud_status ud_connection_cdc_rebind(ud_connection *c, const ud_batch *schema, uint64_t version) {
-    if (!c || !c->cdc || !schema || schema->ctx != c->ctx || !version || version < c->cdc_version)
+    if (!c || !c->cdc || !schema || !version || version < c->cdc_version)
         return UD_INVALID;
     if (!c->api->cdc_rebind)
         return UD_UNSUPPORTED;

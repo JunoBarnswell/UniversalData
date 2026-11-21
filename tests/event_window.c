@@ -1,5 +1,6 @@
 #include "check.h"
 #include "ud/operator.h"
+#include "ud/connector.h"
 #include <string.h>
 #include <inttypes.h>
 #include <time.h>
@@ -14,6 +15,15 @@ static ud_buffer_manager *buffers;
 static ud_field fields[] = {{.name = "time", .name_length = 4, .type = UD_INT64},
                             {.name = "key", .name_length = 3, .type = UD_INT64},
                             {.name = "value", .name_length = 5, .type = UD_INT64}};
+static ud_field change_fields[] = {{.name = "time", .name_length = 4, .type = UD_INT64},
+                                   {.name = "key", .name_length = 3, .type = UD_INT64},
+                                   {.name = "value", .name_length = 5, .type = UD_INT64},
+                                   {.name = "before",
+                                    .name_length = 6,
+                                    .type = UD_STRUCT,
+                                    .nullable = 1,
+                                    .children = fields,
+                                    .child_count = 3}};
 static ud_status batch(const int64_t *times, uint32_t rows, ud_batch **out) {
     UD_TRY(ud_batch_create(ctx, fields, 3, rows, out));
     for (uint32_t i = 0; i < rows; i++) {
@@ -80,6 +90,104 @@ static int compare_ns(const void *a, const void *b) {
     uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
     return x < y ? -1 : x > y;
 }
+static ud_status change_batch(const int64_t values[3], const int64_t before_values[3],
+                              uint32_t operation, ud_batch **out) {
+    static uint64_t sequence = 0;
+    UD_TRY(ud_batch_create(ctx, change_fields, 4, 1, out));
+    ud_value before[3];
+    for (uint32_t i = 0; before_values && i < 3; i++)
+        before[i] = (ud_value){.type = UD_INT64, .integer = before_values[i]};
+    ud_value row[] = {{.type = UD_INT64, .integer = values[0]},
+                      {.type = UD_INT64, .integer = values[1]},
+                      {.type = UD_INT64, .integer = values[2]},
+                      {.type = UD_STRUCT,
+                       .is_null = !before_values,
+                       .children = before,
+                       .child_count = before_values ? 3u : 0u}};
+    UD_TRY(ud_batch_append(*out, row, 4));
+    if (operation) {
+        ud_row_info info = {.id = {0xabc, 0xdef + ++sequence}, .operation = operation};
+        UD_TRY(ud_batch_set_row_info(*out, 0, &info));
+    }
+    return ud_batch_seal(*out);
+}
+static int changes(void) {
+    static const char config[] = "{\"mode\":\"tumbling\",\"timeField\":\"time\","
+                                 "\"sizeMicros\":10,\"allowedLatenessMicros\":2,"
+                                 "\"latePolicy\":\"drop\",\"emit\":\"changes\","
+                                 "\"beforeField\":\"before\",\"plan\":{\"version\":"
+                                 UD_PROTOCOL_VERSION_TEXT
+                                 ",\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\","
+                                 "\"column\":\"value\",\"name\":\"total\"}]}}";
+    ud_batch *schema = NULL, *input = NULL, *output = NULL, *state = NULL;
+    const ud_batch *inputs[1];
+    ud_operator *o = NULL, *restored = NULL;
+    OK(ud_batch_create(ctx, change_fields, 4, 0, &schema));
+    inputs[0] = schema;
+    ud_operator_options options = {.struct_size = sizeof(options),
+                                   .abi_version = UD_ABI_VERSION,
+                                   .kind = UD_OPERATOR_EVENT_WINDOW,
+                                   .max_batch_rows = 16,
+                                   .configuration = {config, sizeof(config) - 1}};
+    OK(ud_operator_create(ctx, &options, inputs, &o));
+    OK(change_batch((int64_t[]){1, 1, 100}, NULL, 0, &input));
+    OK(ud_operator_push(o, 0, input));
+    ud_batch_destroy(input);
+    uint32_t port = 99;
+    OK(ud_operator_pull(o, &output, &port));
+    CHECK(port == 0 && ud_batch_rows(output) == 1 && ud_batch_columns(output) == 6);
+    ud_row_info info;
+    OK(ud_batch_row_info(output, 0, &info));
+    CHECK(info.operation == UD_CHANGE_INSERT);
+    ud_value value;
+    OK(ud_batch_get(output, 0, 3, &value));
+    CHECK(value.integer == 100);
+    OK(ud_batch_get(output, 0, 4, &value));
+    CHECK(value.integer == 1);
+    OK(ud_batch_get(output, 0, 5, &value));
+    CHECK(value.is_null);
+    ud_batch_destroy(output);
+
+    OK(change_batch((int64_t[]){1, 1, 70}, (int64_t[]){1, 1, 100}, UD_CHANGE_UPDATE, &input));
+    OK(ud_operator_push(o, 0, input));
+    ud_batch_destroy(input);
+    OK(ud_operator_pull(o, &output, &port));
+    OK(ud_batch_row_info(output, 0, &info));
+    CHECK(info.operation == UD_CHANGE_UPDATE);
+    OK(ud_batch_get(output, 0, 3, &value));
+    CHECK(value.integer == 70);
+    OK(ud_batch_get(output, 0, 4, &value));
+    CHECK(value.integer == 2);
+    OK(ud_batch_get(output, 0, 5, &value));
+    CHECK(!value.is_null && value.child_count == 5);
+    CHECK(value.children[3].integer == 100 && value.children[4].integer == 1);
+    ud_batch_destroy(output);
+    OK(ud_operator_checkpoint(o, &state));
+    OK(ud_operator_create(ctx, &options, inputs, &restored));
+    OK(ud_operator_restore(&restored, state));
+    ud_batch_destroy(state);
+    state = NULL;
+    OK(ud_operator_destroy(o));
+    o = restored;
+    restored = NULL;
+
+    OK(change_batch((int64_t[]){1, 1, 70}, (int64_t[]){1, 1, 70}, UD_CHANGE_DELETE, &input));
+    OK(ud_operator_push(o, 0, input));
+    ud_batch_destroy(input);
+    OK(ud_operator_pull(o, &output, &port));
+    OK(ud_batch_row_info(output, 0, &info));
+    CHECK(info.operation == UD_CHANGE_DELETE);
+    OK(ud_batch_get(output, 0, 3, &value));
+    CHECK(value.integer == 70);
+    ud_batch_destroy(output);
+    OK(ud_operator_watermark(o, 20));
+    OK(ud_operator_checkpoint(o, &output));
+    CHECK(ud_batch_rows(output) == 1);
+    ud_batch_destroy(output);
+    OK(ud_operator_destroy(o));
+    ud_batch_destroy(schema);
+    return 0;
+}
 int main(void) {
     OK(ud_context_create(&(ud_context_options){.struct_size = sizeof(ud_context_options),
                                                .abi_version = UD_ABI_VERSION,
@@ -92,6 +200,7 @@ int main(void) {
                                                      .resident_limit = 1048576,
                                                      .working_limit = 16777216},
                                 &buffers));
+    CHECK(!changes());
     ud_operator *o = NULL, *restored = NULL;
     ud_batch *state = NULL, *b = NULL;
     OK(create("tumbling", "redirect", 1048576, &o));

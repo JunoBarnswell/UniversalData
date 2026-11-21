@@ -30,13 +30,14 @@ internal sealed class Execution : IDisposable
     [ThreadStatic] private static int callbackDepth;
     private readonly ExecutionHandle execution;
     private readonly object controller = new();
-    private bool disposed;
+    private volatile bool disposed;
 
     public Execution(string packageJson, string tenant, PackageAuthorizer? authorize, string parametersJson = "{}", string executionId = "", PackageCredentialResolver? resolve = null,
         uint edgeCapacity = 2, uint maxBatchRows = 4096, ulong memoryLimit = 268435456, ulong timeoutMilliseconds = 0, string? stateDirectory = null, bool resume = false, uint maxConcurrency = 1,
         Registry? registry = null, Action<ExecutionEvent>? observe = null, ulong eventSequenceStart = 0,
         uint workerMember = 0, uint workerMembers = 0, uint consumerLanes = 0,
-        bool brokerRestore = false, string? workerRunId = null, KafkaAssignment? assignment = null)
+        bool brokerRestore = false, string? workerRunId = null, KafkaAssignment? assignment = null,
+        ConnectionPool? pool = null)
     {
         bool ownedRegistry = false;
         using (var document = System.Text.Json.JsonDocument.Parse(packageJson))
@@ -81,8 +82,10 @@ internal sealed class Execution : IDisposable
         {
             var data = Utf8.Bytes(value); var pin = GCHandle.Alloc(data.Length == 0 ? new byte[1] : data, GCHandleType.Pinned); pins.Add(pin); return new(pin.AddrOfPinnedObject(), checked((uint)data.Length));
         }
+        bool poolPinned = false;
         try
         {
+            pool?.DangerousAddRef(ref poolPinned);
             var document = Pin(packageJson);
             var options = new Native.ExecutionOptions
             {
@@ -119,15 +122,21 @@ internal sealed class Execution : IDisposable
                 var runId = Pin(assignment.RunId);
                 var topic = Pin(assignment.Topic);
                 Check(registry is null
-                    ? Native.ud_execution_create_partitioned(document, ref options, runId, topic, parts,(uint)parts.Length,out pointer)
-                    : registry.CreatePartitionedExecution(document,ref options,runId,topic,parts,out pointer));
+                    ? Native.CreatePartitionedExecution(document, ref options, runId, topic, parts, pool, out pointer)
+                    : registry.CreatePartitionedExecution(document, ref options, runId, topic, parts, pool, out pointer));
             }
-            else Check(registry is null ? Native.ud_execution_create_json(document, ref options, out pointer)
-                                       : registry.CreateExecution(document, ref options, out pointer));
-            execution = new ExecutionHandle(pointer, grant, resolver, observer, registry, ownedRegistry);
+            else Check(registry is null ? Native.CreateExecution(document, ref options, pool, out pointer)
+                                       : registry.CreateExecution(document, ref options, pool, out pointer));
+            execution = new ExecutionHandle(pointer, grant, resolver, observer, registry, ownedRegistry, pool);
+            poolPinned = false;
         }
         catch { if (ownedRegistry) registry?.Dispose(); throw; }
-        finally { foreach (var pin in pins) pin.Free(); GC.KeepAlive(grant); GC.KeepAlive(resolver); GC.KeepAlive(observer); GC.KeepAlive(registry); }
+        finally
+        {
+            if (poolPinned) pool!.DangerousRelease();
+            foreach (var pin in pins) pin.Free();
+            GC.KeepAlive(grant); GC.KeepAlive(resolver); GC.KeepAlive(observer); GC.KeepAlive(registry);
+        }
     }
     internal KafkaPartitionPosition[] PartitionPositions(string connection, string topic, string group)
     {
@@ -341,10 +350,13 @@ internal sealed class ExecutionHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
     private readonly Native.Authorizer? authorizer; private readonly Native.Resolver? resolver;
     private readonly Native.Observer? observer; private readonly Registry? registry; private readonly bool ownedRegistry;
+    private readonly ConnectionPool? pool;
 
-    internal ExecutionHandle(IntPtr pointer, Native.Authorizer? grant, Native.Resolver? resolve, Native.Observer? observation, Registry? registrations, bool ownRegistrations = false) : base(true)
+    internal ExecutionHandle(IntPtr pointer, Native.Authorizer? grant, Native.Resolver? resolve, Native.Observer? observation,
+        Registry? registrations, bool ownRegistrations = false, ConnectionPool? pool = null) : base(true)
     {
-        authorizer = grant; resolver = resolve; observer = observation; registry = registrations; ownedRegistry = ownRegistrations; SetHandle(pointer);
+        authorizer = grant; resolver = resolve; observer = observation; registry = registrations;
+        ownedRegistry = ownRegistrations; this.pool = pool; SetHandle(pointer);
     }
 
     protected override bool ReleaseHandle()
@@ -352,8 +364,13 @@ internal sealed class ExecutionHandle : SafeHandleZeroOrMinusOneIsInvalid
         Native.ud_execution_cancel_raw(handle); int result;
         do { result = Native.ud_execution_destroy(handle); if (result == 11) Native.ud_execution_wait_raw(handle, 100); } while (result == 11);
         GC.KeepAlive(authorizer); GC.KeepAlive(resolver); GC.KeepAlive(observer);
-        if (result == 0 && ownedRegistry) registry?.Dispose();
-        GC.KeepAlive(registry); return result == 0;
+        if (result == 0)
+        {
+            if (ownedRegistry) registry?.Dispose();
+            pool?.DangerousRelease();
+        }
+        GC.KeepAlive(registry);
+        return result == 0;
     }
 }
 

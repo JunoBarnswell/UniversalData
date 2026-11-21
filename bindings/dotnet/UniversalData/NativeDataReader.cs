@@ -6,16 +6,16 @@ using System.Text.Json;
 
 namespace UniversalData;
 
-internal sealed class EnlistedDataReader : DbDataReader
+internal sealed class NativeDataReader : DbDataReader
 {
-    private readonly EnlistedAdoProvider owner;
+    private readonly NativeAdoProvider owner;
     private readonly Column[] columns;
     private SqlBatchHandle? batch;
     private int row = -1;
     private int batchRows;
     private bool closed, finished, hasRows;
 
-    internal EnlistedDataReader(EnlistedAdoProvider owner, string schema)
+    internal NativeDataReader(NativeAdoProvider owner, string schema)
     {
         this.owner = owner;
         using var document = JsonDocument.Parse(schema);
@@ -91,7 +91,7 @@ internal sealed class EnlistedDataReader : DbDataReader
     public override object this[string name] => GetValue(GetOrdinal(name));
     public override string GetName(int ordinal) => columns[ordinal].Name;
     public override Type GetFieldType(int ordinal) => columns[ordinal].Type;
-    public override string GetDataTypeName(int ordinal) => columns[ordinal].NativeType;
+    public override string GetDataTypeName(int ordinal) => owner.GetDataTypeName(columns[ordinal].NativeType);
 
     public override object GetValue(int ordinal) => Value(ordinal, typeof(object)) ?? DBNull.Value;
     public override T GetFieldValue<T>(int ordinal) => Value(ordinal, typeof(T)) is T value ? value :
@@ -182,7 +182,7 @@ internal sealed class EnlistedDataReader : DbDataReader
         base.Dispose(disposing);
     }
 
-    private EnlistedAdoProvider.OperationLease EnterOperation()
+    private NativeAdoProvider.OperationLease EnterOperation()
     {
         ObjectDisposedException.ThrowIf(IsClosed, this);
         return owner.EnterOperation(this);

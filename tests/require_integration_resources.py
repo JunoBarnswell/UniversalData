@@ -17,6 +17,10 @@ if sys.platform.startswith("linux"):
 if sys.platform == "win32":
     required += ["UD_TEST_WMI_CONFIG"]
 missing = [name for name in required if not os.environ.get(name) or not pathlib.Path(os.environ[name]).is_file()]
+missing += [name for name in ("UD_TEST_ICEBERG_CATALOG", "UD_TEST_TRINO_URL") if not os.environ.get(name)]
+storage = os.environ.get("UD_TEST_ICEBERG_STORAGE")
+if not storage or not pathlib.Path(storage).is_dir():
+    missing.append("UD_TEST_ICEBERG_STORAGE")
 if os.environ.get("UD_TEST_FLUENT_LOAD") != "1" or os.environ.get("UD_TEST_FLUENT_LOAD_REQUIRE_LIMITS") == "0":
     missing.append("UD_TEST_FLUENT_LOAD=1 with per-process limits")
 if missing:

@@ -5,6 +5,10 @@ set(src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/cdc.c ${PROJECT_SOURCE_DIR}/con
 if(UD_WITH_ARROW_FILES)
   list(APPEND src ${PROJECT_SOURCE_DIR}/connectors/columnar_file.cpp)
 endif()
+if(UD_WITH_ICEBERG)
+  list(APPEND src ${PROJECT_SOURCE_DIR}/connectors/iceberg_table.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/iceberg.c)
+endif()
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/debug.c ${CMAKE_CURRENT_SOURCE_DIR}/preview.c ${CMAKE_CURRENT_SOURCE_DIR}/file_inspection.c ${CMAKE_CURRENT_SOURCE_DIR}/definition.c ${CMAKE_CURRENT_SOURCE_DIR}/file_generation.c)
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/network.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/wmi.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/sqlserver.c)
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/column_file.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/avro.c ${PROJECT_SOURCE_DIR}/connectors/avro.c)
@@ -37,6 +41,12 @@ endif()
 if(UD_WITH_ARROW_FILES)
   target_compile_definitions(ud_package PRIVATE UD_WITH_ARROW_FILES)
   target_link_libraries(ud_package PUBLIC UDArrow::Arrow UDArrow::Parquet)
+endif()
+if(UD_WITH_ICEBERG)
+  target_compile_features(ud_package PRIVATE cxx_std_23)
+  target_compile_definitions(ud_package PRIVATE UD_WITH_ICEBERG)
+  target_link_libraries(ud_package PUBLIC iceberg::iceberg_bundle_shared iceberg::iceberg_rest_shared
+    PRIVATE $<BUILD_INTERFACE:nlohmann_json::nlohmann_json>)
 endif()
 set(UD_ALL_SOURCES ${UD_ALL_SOURCES} ${src} PARENT_SCOPE)
 

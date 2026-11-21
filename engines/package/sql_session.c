@@ -295,7 +295,7 @@ ud_status ud_sql_session_read_open(ud_sql_session *session, ud_string sql, ud_st
     *shape = NULL;
     if (session->cursor || session->writing || session->rollback_only)
         return UD_BUSY;
-    if ((session->enlisted || session->transaction) && sql.length)
+    if (sql.length)
         UD_TRY(ud_sql_validate_read_query(sql));
     if (batch_rows > session->execution->options.max_batch_rows)
         batch_rows = session->execution->options.max_batch_rows;

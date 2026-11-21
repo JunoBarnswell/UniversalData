@@ -39,8 +39,23 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
         CancellationToken cancellation = default) =>
         Send<JsonElement>(HttpMethod.Post, "/api/executions", request, cancellation);
 
+    public ValueTask<Result<EtlExecutionStatus>> ExecutionAsync(string runId,
+        CancellationToken cancellation = default) =>
+        Send<EtlExecutionStatus>(HttpMethod.Get, $"/api/executions/{Segment(runId)}", null, cancellation);
+
+    public async ValueTask<Result> StopExecutionAsync(string runId, CancellationToken cancellation = default)
+    {
+        var response = await Send<JsonElement>(HttpMethod.Post, $"/api/executions/{Segment(runId)}/stop",
+            null, cancellation, expectValue: false).ConfigureAwait(false);
+        return new(response.Code, response.Error);
+    }
+
+    public ValueTask<Result<EtlExecutionStatus>> ResumeExecutionAsync(string runId,
+        CancellationToken cancellation = default) =>
+        Send<EtlExecutionStatus>(HttpMethod.Post, $"/api/executions/{Segment(runId)}/resume", null, cancellation);
+
     private async ValueTask<Result<T>> Send<T>(HttpMethod method, string path, object? body,
-        CancellationToken cancellation)
+        CancellationToken cancellation, bool expectValue = true)
     {
         try
         {
@@ -53,6 +68,7 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
                 .ConfigureAwait(false);
             if (response.IsSuccessStatusCode)
             {
+                if (!expectValue) return new(StatusCode.Ok, default);
                 var value = await response.Content.ReadFromJsonAsync<T>(WorkerProtocol.Json, cancellation)
                     .ConfigureAwait(false);
                 return new(StatusCode.Ok, value);

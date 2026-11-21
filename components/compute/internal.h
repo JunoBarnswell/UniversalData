@@ -28,7 +28,7 @@ struct ud_plan {
 int ud_value_compare(const ud_value *, const ud_value *);
 ud_status ud_plan_check_batch(const ud_plan *, const ud_batch *);
 ud_status ud_plan_accept(const ud_plan *, const ud_batch *, uint32_t, int *);
-ud_status ud_accumulator_add_accepted(ud_accumulator *,const ud_batch *,uint32_t);
+ud_status ud_accumulator_update_accepted(ud_accumulator *, const ud_batch *, uint32_t, int);
 ud_status ud_accumulator_state_schema(const ud_plan *,ud_batch **);
 ud_status ud_accumulator_partial_snapshot(const ud_accumulator *,ud_batch **);
 ud_status ud_accumulator_merge_row(ud_accumulator *,const ud_batch *,uint32_t);

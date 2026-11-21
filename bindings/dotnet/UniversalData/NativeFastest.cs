@@ -4,7 +4,7 @@ using SqlSugar;
 
 namespace UniversalData;
 
-internal sealed class EnlistedFastest<T>(EnlistedAdoProvider participant) : IFastest<T> where T : class, new()
+internal sealed class NativeFastest<T>(NativeAdoProvider participant) : IFastest<T> where T : class, new()
 {
     private string? tableName;
     private int batchRows = 256;
@@ -76,7 +76,7 @@ internal sealed class EnlistedFastest<T>(EnlistedAdoProvider participant) : IFas
                 (insert && (column.InsertServerTime || !string.IsNullOrEmpty(column.InsertSql))) ||
                 (!insert && (column.UpdateServerTime || !string.IsNullOrEmpty(column.UpdateSql) ||
                     column.IsEnableUpdateVersionValidation)))
-                throw EnlistedAdoProvider.Unsupported($"Bulk mapping for '{column.PropertyName}' requires provider-specific behavior.");
+                throw NativeAdoProvider.Unsupported($"Bulk mapping for '{column.PropertyName}' requires provider-specific behavior.");
             members.Add(member with
             {
                 ColumnName = context.EntityMaintenance.GetDbColumnName<T>(column.PropertyName),
@@ -109,7 +109,7 @@ internal sealed class EnlistedFastest<T>(EnlistedAdoProvider participant) : IFas
 
     // Driver-specific copy, merge and split-table operations may create a new connection.
     // The transaction surface admits only typed writes that own a native participant.
-    private static UniversalDataException Unsupported() => EnlistedAdoProvider.Unsupported(
+    private static UniversalDataException Unsupported() => NativeAdoProvider.Unsupported(
         "This bulk operation cannot be applied to a native transaction participant. Use typed BulkCopy or BulkUpdate.");
     private static Task<int> UnsupportedAsync() => Task.FromException<int>(Unsupported());
 

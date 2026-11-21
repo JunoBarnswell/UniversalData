@@ -2,6 +2,9 @@
 #include "ud/http.h"
 ud_status ud_mq_source_register(ud_registry *);
 ud_status ud_mq_destination_register(ud_registry *);
+#ifdef UD_WITH_ICEBERG
+ud_status ud_iceberg_register(ud_registry *);
+#endif
 
 /* Destination binding uses the same native comparison and cast as Source.
  * Storage fields belong to the target namespace; row identity remains the source's. */
@@ -581,6 +584,9 @@ ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_cdc_register(registry));
     UD_TRY(ud_mq_source_register(registry));
     UD_TRY(ud_mq_destination_register(registry));
+#ifdef UD_WITH_ICEBERG
+    UD_TRY(ud_iceberg_register(registry));
+#endif
     UD_TRY(ud_advanced_register(registry));
     static const struct {
         const char *id, *name;

@@ -18,13 +18,13 @@ internal static class ManagedSqlEtl
             var target = Path.Combine(directory.FullName, "target.db");
             using (var writer = Open(plugin, source))
             {
-                Execute(writer, "CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)");
+                Execute(writer.Session, "CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)");
                 var rows = Enumerable.Range(1, 35)
                     .Select(id => new ManagedEtlRow { Id = id, Label = $"数据-{id}-order" });
-                Require(WriteRows(writer, SqlNative.WriteAppend, rows, 4) == 35, "Source preparation");
+                Require(WriteRows(writer.Session, SqlNative.WriteAppend, rows, 4) == 35, "Source preparation");
             }
             using (var writer = Open(plugin, target))
-                Execute(writer, "CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)");
+                Execute(writer.Session, "CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)");
 
             var sourceReadable = true;
             var schema = Discover(plugin, source, Authorize, Resolve);
@@ -33,7 +33,7 @@ internal static class ManagedSqlEtl
                 Require(!package.RequiresJournal, "Live SQL work must use response delivery");
             VerifyPreview(document, Authorize, Resolve);
             using (var before = Open(plugin, target))
-                Require(Scalar<long>(before, "SELECT COUNT(*) FROM etl_rows") == 0, "Preview left the destination empty");
+                Require(Scalar<long>(before.Session, "SELECT COUNT(*) FROM etl_rows") == 0, "Preview left the destination empty");
             using var registry = new Registry();
             new ManagedSqlModule().Register(registry);
             using (var execution = new Execution(document, "sql-etl", Authorize, resolve: Resolve,
@@ -65,7 +65,7 @@ internal static class ManagedSqlEtl
                     "C source, managed transform and C target delivery");
             }
             using var reader = Open(plugin, target);
-            var result = ReadBatches<ManagedEtlRow>(reader, "SELECT id,label FROM etl_rows ORDER BY id", 4).SelectMany(batch => batch);
+            var result = ReadBatches<ManagedEtlRow>(reader.Session, "SELECT id,label FROM etl_rows ORDER BY id", 4).SelectMany(batch => batch);
             Require(result.Select(row => (row.Id, row.Label)).SequenceEqual(
                 Enumerable.Range(1, 35).Select(id => ((long)id, $"数据-{id}-ORDER"))), "Target readback");
             Console.WriteLine("PASS SQL Source, managed typed transform, SQL Destination, 35 rows and identities");
@@ -89,8 +89,8 @@ internal static class ManagedSqlEtl
         }
     }
 
-    private static SqlSessionHandle Open(string plugin, string file) =>
-        SqlNative.Open(DataSourceKind.Sqlite, plugin, "Data Source=" + file);
+    private static ManagedSqlFixture Open(string plugin, string file) =>
+        OpenFixture(DataSourceKind.Sqlite, plugin, file);
 
     private static void VerifyPreview(string document, PackageAuthorizer authorize,
         PackageCredentialResolver resolve)

@@ -10,21 +10,26 @@
 typedef struct session {
     ud_plugin *plugin;
     ud_connection *connection;
-    ud_string driver, resource;
-    uint8_t key[32];
+    uint8_t key[32], family[32];
     uint64_t idle_since, idle_timeout;
     uint64_t capabilities, plugin_capabilities;
-    int active, unhealthy;
+    ud_connection_lease *borrower;
+    int unhealthy;
     struct session *next;
 } session;
-struct ud_connection_manager {
-    ud_execution *execution;
+struct ud_connection_pool {
+    ud_context *ctx;
     session *sessions;
-    ud_connection_lease *leases;
-    uint32_t capacity, count, active;
-    uint64_t acquisitions, hits, failures, wait_ms, commits, rollbacks, uncertain;
+    uint32_t capacity, count, users;
+    int closing, owns_context;
     ud_mutex mutex;
     ud_condition changed;
+};
+struct ud_connection_manager {
+    ud_connection_pool *pool;
+    ud_connection_lease *leases;
+    uint32_t capacity, physical, active;
+    uint64_t acquisitions, hits, failures, wait_ms, commits, rollbacks, uncertain;
 };
 typedef struct transaction_participant {
     ud_connection_lease *lease;
@@ -56,7 +61,8 @@ struct ud_connection_lease {
     ud_connection *connection;
     uint64_t capabilities;
     uint32_t pins, aliases;
-    int cancelled, shared, exclusive_sql, sql_borrowed, sql_transaction, read_only, cleanup, messaging;
+    atomic_int cancelled;
+    int shared, exclusive_sql, sql_borrowed, sql_transaction, read_only, cleanup, messaging, releasing;
     struct ud_connection_lease *shared_owner;
     void *sql_session;
     void (*sql_session_ended)(void *);
@@ -72,7 +78,11 @@ uint64_t ud_connection_lease_capabilities(const ud_connection_lease *lease) {
 }
 static ud_status check_lease(void *user) {
     ud_connection_lease *l = user;
-    return l && !l->cleanup ? ud_activation_check(l->activation) : UD_OK;
+    if (!l || l->cleanup)
+        return UD_OK;
+    if (atomic_load(&l->cancelled))
+        return UD_CANCELLED;
+    return ud_activation_check(l->activation);
 }
 ud_status ud_connection_lease_authorize(ud_connection_lease *l, int32_t action) {
     if (!l)
@@ -105,10 +115,12 @@ static ud_status session_grant(void *user, ud_string tenant, ud_string resource,
         return UD_AUTH;
     if (ud_same(resource, l->resource))
         return ud_connection_lease_authorize(l, action);
+    if (action == UD_ACCESS_NETWORK)
+        return (network_driver(l->driver) || l->messaging)
+                   ? ud_connection_lease_authorize_uri(l, resource)
+                   : UD_AUTH;
     if (!l->messaging || l->read_only)
         return UD_AUTH;
-    if (action == UD_ACCESS_NETWORK)
-        return ud_connection_lease_authorize_uri(l, resource);
     if ((action != UD_ACCESS_READ && action != UD_ACCESS_WRITE) ||
         resource.length <= l->resource.length || resource.data[l->resource.length] != '/' ||
         memcmp(resource.data, l->resource.data, l->resource.length))
@@ -120,31 +132,69 @@ static ud_status session_grant(void *user, ud_string tenant, ud_string resource,
                ? UD_OK
                : UD_AUTH;
 }
-ud_status ud_connections_create(ud_execution *e) {
-    if (!e)
+static ud_connection_pool *create_pool(ud_context *ctx, uint32_t capacity, int owns_context) {
+    ud_connection_pool *pool = ud_alloc(ctx, sizeof(*pool));
+    if (!pool)
+        return NULL;
+    pool->ctx = ctx;
+    pool->capacity = capacity;
+    pool->owns_context = owns_context;
+    ud_mutex_init(&pool->mutex);
+    ud_condition_init(&pool->changed);
+    return pool;
+}
+
+ud_status ud_connection_pool_create(uint32_t capacity, uint64_t memory_limit,
+                                    ud_connection_pool **out) {
+    if (!out)
         return UD_INVALID;
-    struct ud_connection_manager *m = ud_alloc(e->ctx, sizeof(*m));
-    if (!m)
+    *out = NULL;
+    if (!capacity || capacity > 65536 || !memory_limit)
+        return UD_INVALID;
+    ud_context_options options = {.struct_size = sizeof(options), .abi_version = UD_ABI_VERSION,
+                                  .memory_limit = memory_limit};
+    ud_context *ctx = NULL;
+    UD_TRY(ud_context_create(&options, &ctx));
+    ud_connection_pool *pool = create_pool(ctx, capacity, 1);
+    if (!pool) {
+        (void)ud_context_destroy(ctx);
         return UD_RESOURCE;
-    m->execution = e;
-    m->capacity = 64;
+    }
+    *out = pool;
+    return UD_OK;
+}
+
+ud_status ud_connections_create(ud_execution *e, ud_connection_pool *pool) {
+    uint64_t capacity = pool ? pool->capacity : 64;
     const ud_json *policy = ud_member(ud_member(e->package->document, "policy"), "connections");
     if (policy) {
         static const char *keys[] = {"maxSessions"};
-        ud_status s = ud_json_keys(policy, keys, 1);
-        uint64_t capacity = 0;
-        if (!s)
-            s = ud_json_uint(ud_member(policy, "maxSessions"), &capacity);
-        if (!s && (!capacity || capacity > 65536))
-            s = UD_SCHEMA;
-        if (s) {
-            ud_free(m);
-            return s;
-        }
-        m->capacity = (uint32_t)capacity;
+        UD_TRY(ud_json_keys(policy, keys, 1));
+        UD_TRY(ud_json_uint(ud_member(policy, "maxSessions"), &capacity));
+        if (!capacity || capacity > 65536)
+            return UD_SCHEMA;
     }
-    ud_mutex_init(&m->mutex);
-    ud_condition_init(&m->changed);
+    struct ud_connection_manager *m = ud_alloc(e->ctx, sizeof(*m));
+    if (!m)
+        return UD_RESOURCE;
+    if (pool) {
+        ud_mutex_lock(&pool->mutex);
+        if (pool->closing || pool->users == UINT32_MAX) {
+            ud_mutex_unlock(&pool->mutex);
+            ud_free(m);
+            return UD_BUSY;
+        }
+        pool->users++;
+        ud_mutex_unlock(&pool->mutex);
+    } else {
+        pool = create_pool(e->ctx, (uint32_t)capacity, 0);
+        if (!pool) {
+            ud_free(m);
+            return UD_RESOURCE;
+        }
+    }
+    m->pool = pool;
+    m->capacity = capacity < pool->capacity ? (uint32_t)capacity : pool->capacity;
     e->connections = m;
     return UD_OK;
 }
@@ -179,58 +229,106 @@ static ud_status definition_limit(const ud_json *d, const char *name, uint64_t f
 }
 static void track(ud_connection_lease *l) {
     struct ud_connection_manager *m = l->activation->execution->connections;
-    ud_mutex_lock(&m->mutex);
+    ud_mutex_lock(&m->pool->mutex);
     l->next = m->leases;
     m->leases = l;
     m->active++;
     m->acquisitions++;
-    ud_mutex_unlock(&m->mutex);
+    ud_mutex_unlock(&m->pool->mutex);
 }
 static ud_status dispose_session(session *s) {
     if (s->connection) {
         UD_TRY(ud_connection_close(s->connection));
         s->connection = NULL;
     }
-    if (s->plugin)
+    if (s->plugin) {
         UD_TRY(ud_plugin_unload(s->plugin));
-    ud_free((void *)s->driver.data);
-    ud_free((void *)s->resource.data);
+        s->plugin = NULL;
+    }
     ud_free(s);
     return UD_OK;
 }
+static void clear_configuration(ud_string configuration) {
+    volatile char *secret = (volatile char *)configuration.data;
+    if (secret)
+        for (uint32_t index = 0; index < configuration.length; index++)
+            secret[index] = 0;
+    ud_free((void *)configuration.data);
+}
+
+static ud_status relay_driver_error(ud_connection_lease *lease, ud_status status) {
+    ud_execution *execution = lease->activation->execution;
+    ud_context *driver = execution->connections->pool->ctx;
+    if (driver != execution->ctx && status > UD_END && status != UD_MORE && status != UD_BUSY) {
+        ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION};
+        if (!ud_error_details(driver, &detail) && detail.cause) {
+            char message[1024];
+            int length = snprintf(message, sizeof(message), "%s", ud_error(driver));
+            if (length > 0 && (size_t)length < sizeof(message))
+                return ud_context_report_error(execution->ctx, status,
+                                               (ud_string){message, (uint32_t)length}, &detail);
+        }
+    }
+    return status;
+}
+
+/* Removing a session from the idle list does not free its capacity. Keep the
+ * slot accounted until the physical connection has actually closed. */
+static ud_status dispose_retired(ud_connection_pool *pool, session *retired) {
+    ud_status status = UD_OK;
+    while (retired) {
+        session *next = retired->next;
+        ud_status closed = dispose_session(retired);
+        ud_mutex_lock(&pool->mutex);
+        if (!closed)
+            pool->count--;
+        else {
+            retired->unhealthy = 1;
+            retired->next = pool->sessions;
+            pool->sessions = retired;
+            if (!status)
+                status = closed;
+        }
+        ud_condition_wake(&pool->changed);
+        ud_mutex_unlock(&pool->mutex);
+        retired = next;
+    }
+    return status;
+}
+
 static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
     ud_execution *e = l->activation->execution;
     struct ud_connection_manager *m = e->connections;
-    if (!e->options.resolve)
+    ud_connection_pool *pool = m->pool;
+    if (!e->options.resolve || !e->options.authorize ||
+        e->options.authorize(e->options.authorize_user, e->options.tenant, l->driver,
+                             UD_ACCESS_OPEN) != UD_OK)
         return UD_AUTH;
     ud_string reference;
     UD_TRY(ud_json_string(ud_member(l->definition, "credentialReference"), &reference));
-    /* Resolve on EVERY acquisition. Neither a ref nor a connection string alone
-     * establishes current principal/credential identity. Secret bytes stay private. */
+    /* Resolve again for every lease. The SDK reference includes the source
+     * revision. The secret hash detects rotation even within one revision. */
     ud_string configuration = {0};
     ud_status status = e->options.resolve(e->options.resolve_user, e->ctx, e->options.tenant,
                                           l->resource, reference, &configuration);
-    if (status) {
-        ud_free((void *)configuration.data);
-        return status;
-    }
-    if (!configuration.data || !configuration.length ||
-        memchr(configuration.data, 0, configuration.length)) {
-        ud_free((void *)configuration.data);
-        return UD_AUTH;
-    }
+    if (!status && (!configuration.data || !configuration.length ||
+                    memchr(configuration.data, 0, configuration.length)))
+        status = UD_AUTH;
     ud_bytes identity = {.ctx = e->ctx};
-    ud_string parts[] = {e->options.tenant, l->driver, l->resource, reference, configuration};
-    for (uint32_t i = 0; !status && i < 5; i++)
-        status = ud_put_string(&identity, parts[i].data, parts[i].length);
-    char *definition = NULL;
-    uint32_t length = 0;
+    uint8_t family[32], key[32], credential[32];
+    /* A Package connection id is logical scope, not physical identity. Two
+     * executions may borrow the same endpoint when tenant, driver, resource,
+     * credential reference and resolved credential agree. */
+    ud_string fields[] = {e->options.tenant, l->driver, l->resource};
+    for (uint32_t index = 0; !status && index < sizeof(fields) / sizeof(fields[0]); index++)
+        status = ud_put_string(&identity, fields[index].data, fields[index].length);
+    if (!status) {
+        ud_hash(identity.data, identity.size, family);
+        ud_hash(configuration.data, configuration.length, credential);
+        status = ud_put_string(&identity, reference.data, reference.length);
+    }
     if (!status)
-        status = ud_json_serialize(l->definition, &definition, &length);
-    if (!status)
-        status = ud_put_string(&identity, definition, length);
-    ud_free(definition);
-    uint8_t key[32];
+        status = ud_bytes_put(&identity, credential, sizeof(credential));
     if (!status)
         ud_hash(identity.data, identity.size, key);
     ud_bytes_clear(&identity);
@@ -243,134 +341,104 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
         status = definition_limit(l->definition, "acquireTimeoutMs", 0, 3600000, &timeout);
     if (!status)
         status = definition_limit(l->definition, "idleTimeoutMs", 30000, 3600000, &idle);
-    if (status) {
-        ud_free((void *)configuration.data);
-        return status;
-    }
     uint64_t started = ud_now_ms();
     session *chosen = NULL;
-    for (;;) {
+    while (!status) {
         status = check_lease(l);
         if (status)
             break;
-        ud_mutex_lock(&m->mutex);
-        session **at = &m->sessions, *retired = NULL;
+        ud_mutex_lock(&pool->mutex);
+        session **at = &pool->sessions, **oldest = NULL, *available = NULL, *retired = NULL;
         uint32_t matching = 0;
+        uint64_t now = ud_now_ms();
         while (*at) {
             session *s = *at;
-            if (!s->active && (s->unhealthy || ud_now_ms() - s->idle_since >= s->idle_timeout ||
-                               (ud_same(s->driver, l->driver) &&
-                                ud_same(s->resource, l->resource) && memcmp(s->key, key, 32)))) {
+            int compatible = !memcmp(s->key, key, sizeof(key));
+            if (!s->borrower && (s->unhealthy || now - s->idle_since >= s->idle_timeout ||
+                               (!compatible && !memcmp(s->family, family, sizeof(family))))) {
                 *at = s->next;
-                m->count--;
                 s->next = retired;
                 retired = s;
                 continue;
             }
-            if (!memcmp(s->key, key, 32)) {
-                if (s->active)
-                    matching++;
-                else if (!chosen) {
-                    chosen = s;
-                    s->active = 1;
-                    m->hits++;
-                }
+            /* maxLeases belongs to this Package connection declaration. */
+            if (compatible && s->borrower && s->borrower->activation->execution == e &&
+                ud_same(s->borrower->id, l->id))
+                matching++;
+            if (!s->borrower) {
+                if (compatible && !available)
+                    available = s;
+                if (!oldest || s->idle_since < (*oldest)->idle_since)
+                    oldest = at;
             }
             at = &s->next;
         }
-        /* Capacity bounds physical sessions, including idle sessions for other
-         * resources. Reclaim the oldest idle entry before rejecting a lease. */
-        while (!chosen && matching < limit && m->count >= m->capacity) {
-            session **oldest = NULL;
-            for (session **entry = &m->sessions; *entry; entry = &(*entry)->next)
-                if (!(*entry)->active && (!oldest || (*entry)->idle_since < (*oldest)->idle_since))
-                    oldest = entry;
-            if (!oldest)
-                break; /* Active leases are never evicted. */
-            session *s = *oldest;
-            *oldest = s->next;
-            m->count--;
-            s->next = retired;
-            retired = s;
-        }
-        if (!chosen && matching < limit && m->count < m->capacity) {
-            chosen = ud_alloc(e->ctx, sizeof(*chosen));
-            if (!chosen)
-                status = UD_RESOURCE;
-            else {
-                memcpy(chosen->key, key, 32);
-                chosen->active = 1;
-                chosen->idle_timeout = idle;
-                chosen->driver = (ud_string){ud_strdup_n(e->ctx, l->driver.data, l->driver.length),
-                                             l->driver.length};
-                chosen->resource = (ud_string){
-                    ud_strdup_n(e->ctx, l->resource.data, l->resource.length), l->resource.length};
-                if (!chosen->driver.data || !chosen->resource.data)
+        if (matching < limit && m->physical < m->capacity) {
+            if (available) {
+                chosen = available;
+                m->hits++;
+            } else if (pool->count < pool->capacity) {
+                chosen = ud_alloc(pool->ctx, sizeof(*chosen));
+                if (!chosen)
                     status = UD_RESOURCE;
-                chosen->next = m->sessions;
-                m->sessions = chosen;
-                m->count++;
+                else {
+                    memcpy(chosen->key, key, sizeof(key));
+                    memcpy(chosen->family, family, sizeof(family));
+                    chosen->next = pool->sessions;
+                    pool->sessions = chosen;
+                    pool->count++;
+                }
+            } else if (!retired && oldest) {
+                retired = *oldest;
+                *oldest = retired->next;
+                retired->next = NULL;
             }
         }
-        if (chosen || status) {
-            m->wait_ms += ud_now_ms() - started;
-            ud_mutex_unlock(&m->mutex);
-        } else {
+        if (chosen) {
+            chosen->borrower = l;
+            chosen->idle_timeout = idle;
+            m->physical++;
+        } else if (!status && !retired) {
             uint64_t elapsed = ud_now_ms() - started;
             if (!timeout || elapsed >= timeout)
                 status = timeout ? UD_TIMEOUT : UD_BUSY;
-            if (!status)
-                ud_condition_wait_ms(&m->changed, &m->mutex,
+            else
+                ud_condition_wait_ms(&pool->changed, &pool->mutex,
                                      (uint32_t)(timeout - elapsed < 25 ? timeout - elapsed : 25));
-            ud_mutex_unlock(&m->mutex);
         }
-        while (retired) {
-            session *next = retired->next;
-            ud_status closed = dispose_session(retired);
-            if (closed) {
-                /* A failed close still owns the native handle. Keep it retired
-                 * in the manager so final destruction can retry safely. */
-                ud_mutex_lock(&m->mutex);
-                retired->unhealthy = 1;
-                retired->next = m->sessions;
-                m->sessions = retired;
-                m->count++;
-                ud_mutex_unlock(&m->mutex);
-                if (!status)
-                    status = closed;
-            }
-            retired = next;
-        }
+        ud_mutex_unlock(&pool->mutex);
+        ud_status closed = dispose_retired(pool, retired);
+        if (!status && !chosen && closed)
+            status = relay_driver_error(l, closed);
         if (chosen || status)
             break;
     }
     l->session = chosen;
+    if (chosen) {
+        ud_mutex_lock(&pool->mutex);
+        m->wait_ms += ud_now_ms() - started;
+        ud_mutex_unlock(&pool->mutex);
+        ud_context_clear_error(pool->ctx);
+    }
     if (!status && !chosen->plugin) {
-        if (!e->options.authorize ||
-            e->options.authorize(e->options.authorize_user, e->options.tenant, l->driver,
-                                 UD_ACCESS_OPEN) != UD_OK)
-            status = UD_AUTH;
-        char *path = !status ? ud_strdup_n(e->ctx, l->driver.data, l->driver.length) : NULL;
-        if (!status && !path)
+        char *path = ud_strdup_n(e->ctx, l->driver.data, l->driver.length);
+        if (!path)
             status = UD_RESOURCE;
         if (!status)
-            status = ud_plugin_load(e->ctx, path, 0, &chosen->plugin);
+            status = ud_plugin_load(pool->ctx, path, 0, &chosen->plugin);
         ud_free(path);
         ud_plugin_api info = {.struct_size = sizeof(info), .abi_version = UD_PLUGIN_ABI};
         if (!status)
             status = ud_plugin_info(chosen->plugin, &info);
         if (!status)
             chosen->plugin_capabilities = info.capabilities;
-        if (!status && !info.connector)
+        if (!status && (!info.connector || (info.connector->capabilities & caps) != caps))
             status = UD_UNSUPPORTED;
         if (!status)
             l->messaging = (info.connector->capabilities &
                             (UD_CONNECT_MESSAGE_SUBSCRIBE | UD_CONNECT_MESSAGE_PUBLISH)) != 0;
-        if (!status && (info.connector->capabilities & caps) != caps)
-            status = UD_UNSUPPORTED;
         if (!status && l->activation->parallel &&
-            (!(info.capabilities & UD_CAP_THREAD_SAFE) ||
-             (info.capabilities & UD_CAP_THREAD_AFFINE)))
+            (!(info.capabilities & UD_CAP_THREAD_SAFE) || (info.capabilities & UD_CAP_THREAD_AFFINE)))
             status = UD_UNSUPPORTED;
         ud_connection_options options = {.struct_size = sizeof(options),
                                          .abi_version = UD_ABI_VERSION,
@@ -385,7 +453,7 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
         if (!status)
             chosen->capabilities = ud_connection_capabilities(chosen->connection);
     }
-    ud_free((void *)configuration.data);
+    clear_configuration(configuration);
     if (!status && l->activation->parallel &&
         (!(chosen->plugin_capabilities & UD_CAP_THREAD_SAFE) ||
          (chosen->plugin_capabilities & UD_CAP_THREAD_AFFINE)))
@@ -393,15 +461,19 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
     if (!status) {
         l->connection = chosen->connection;
         l->capabilities = chosen->capabilities;
+        l->messaging = (l->capabilities &
+                        (UD_CONNECT_MESSAGE_SUBSCRIBE | UD_CONNECT_MESSAGE_PUBLISH)) != 0;
         status = ud_connection_bind_lease(l->connection, l, session_grant, check_lease);
     }
     if (!status && (l->capabilities & caps) != caps)
         status = UD_UNSUPPORTED;
-    if (!status)
+    /* Initialize verifies the physical endpoint. Subsequent clean borrows
+     * keep authorization fresh without issuing a redundant round trip. */
+    if (!status && !chosen->idle_since)
         status = ud_connection_test(l->connection);
     if (status && chosen)
         chosen->unhealthy = 1;
-    return status;
+    return relay_driver_error(l, status);
 }
 static ud_status relative_file_definition(ud_context *memory, ud_json **definition,
                                           ud_string relative) {
@@ -486,6 +558,7 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
     if (!l)
         return UD_RESOURCE;
     l->activation = a;
+    atomic_init(&l->cancelled, 0);
     l->id = id;
     /* Project binding gets its own frame; acquisition never swaps a live scope. */
     ud_activation binding = {.execution = a->execution,
@@ -535,8 +608,8 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
             status = UD_UNSUPPORTED;
         else {
             struct ud_connection_manager *manager = a->execution->connections;
-            ud_mutex_lock(&manager->mutex);
-            if (owned->cancelled)
+            ud_mutex_lock(&manager->pool->mutex);
+            if (atomic_load(&owned->cancelled))
                 status = UD_CANCELLED;
             else if (owned->sql_borrowed || owned->aliases == UINT32_MAX ||
                      (kind == CONNECTION_ATOMIC_SQL && owned->aliases))
@@ -550,7 +623,7 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
                 l->connection = owned->connection;
                 l->capabilities = owned->capabilities;
             }
-            ud_mutex_unlock(&manager->mutex);
+            ud_mutex_unlock(&manager->pool->mutex);
         }
     } else if (!status && ud_named(l->driver, "http")) {
 #ifdef UD_WITH_HTTP
@@ -580,9 +653,9 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
     track(l); /* Failed partial resources have the same cleanup owner. */
     if (status) {
         struct ud_connection_manager *m = a->execution->connections;
-        ud_mutex_lock(&m->mutex);
+        ud_mutex_lock(&m->pool->mutex);
         m->failures++;
-        ud_mutex_unlock(&m->mutex);
+        ud_mutex_unlock(&m->pool->mutex);
         ud_status closed = ud_connection_lease_release(l);
         return closed ? closed : status;
     }
@@ -713,11 +786,12 @@ int32_t ud_connection_lease_delivery(const ud_connection_lease *lease) {
 }
 static ud_status lease_operation_begin(ud_connection_lease *lease, int32_t action) {
     UD_TRY(ud_connection_lease_authorize(lease, action));
+    ud_context_clear_error(lease->activation->execution->connections->pool->ctx);
     return ud_connection_operation_begin(lease->connection, lease, session_grant, check_lease);
 }
 static ud_status lease_operation_end(ud_connection_lease *lease, ud_status status) {
     ud_connection_operation_end(lease->connection);
-    return status;
+    return relay_driver_error(lease, status);
 }
 ud_status ud_connection_lease_savepoint(ud_connection_lease *lease, ud_string name, int32_t phase) {
     if (!lease || !lease->connection)
@@ -742,7 +816,10 @@ ud_status ud_connection_lease_read_next(ud_connection_lease *l, ud_batch **out) 
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
     UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
-    return lease_operation_end(l, ud_connection_read_next(l->connection, out));
+    ud_status status = ud_connection_read_next(l->connection, out);
+    if (!status)
+        status = ud_batch_rehome(l->activation->execution->ctx, out);
+    return lease_operation_end(l, status);
 }
 ud_status ud_connection_lease_message_subscribe(ud_connection_lease *l,
                                                 const ud_message_subscription *options) {
@@ -923,8 +1000,10 @@ ud_status ud_connection_lease_schema(ud_connection_lease *lease, ud_string table
     UD_TRY(ud_connection_lease_authorize(lease, UD_ACCESS_DISCOVER));
     if (lease->connection) {
         UD_TRY(lease_operation_begin(lease, UD_ACCESS_DISCOVER));
-        return lease_operation_end(lease,
-                                   ud_connection_schema(lease->connection, table, scope, out));
+        ud_status status = ud_connection_schema(lease->connection, table, scope, out);
+        if (!status)
+            status = ud_batch_rehome(lease->activation->execution->ctx, out);
+        return lease_operation_end(lease, status);
     }
     if (!ud_named(lease->driver, "file"))
         return UD_UNSUPPORTED;
@@ -1003,30 +1082,41 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
     if (!l)
         return UD_OK;
     struct ud_connection_manager *m = l->activation->execution->connections;
-    ud_mutex_lock(&m->mutex);
-    if (l->aliases) {
-        ud_mutex_unlock(&m->mutex);
+    ud_connection_pool *pool = m->pool;
+    ud_mutex_lock(&pool->mutex);
+    if (l->aliases || l->releasing) {
+        ud_mutex_unlock(&pool->mutex);
         return UD_BUSY;
     }
+    l->releasing = 1;
     while (l->pins)
-        ud_condition_wait(&m->changed, &m->mutex);
-    ud_mutex_unlock(&m->mutex);
+        ud_condition_wait(&pool->changed, &pool->mutex);
+    ud_mutex_unlock(&pool->mutex);
     session *s = l->session;
+    int dirty = check_lease(l) != UD_OK;
     ud_status status = l->exclusive_sql ? ud_connection_lease_read_close(l) : UD_OK;
     if (s && s->connection) {
-        status = ud_connection_read_close(s->connection);
-        if (!status) {
+        ud_status closed = ud_connection_read_close(s->connection);
+        if (!status)
+            status = closed;
+        if (!status && !dirty && !s->unhealthy) {
             if (!ud_connection_reusable(s->connection))
-                s->unhealthy = 1;
+                dirty = 1;
             else
                 status = ud_connection_reset_session(s->connection);
-            if (!status)
-                status = ud_connection_bind_lease(s->connection, NULL, NULL, NULL);
+        }
+        if (status != UD_BUSY) {
+            ud_status detached = ud_connection_bind_lease(s->connection, NULL, NULL, NULL);
+            if (detached)
+                status = detached;
         }
     }
-    if (status == UD_BUSY)
+    ud_mutex_lock(&pool->mutex);
+    if (status == UD_BUSY) {
+        l->releasing = 0;
+        ud_mutex_unlock(&pool->mutex);
         return status;
-    ud_mutex_lock(&m->mutex);
+    }
     ud_connection_lease **at = &m->leases;
     while (*at && *at != l)
         at = &(*at)->next;
@@ -1042,35 +1132,29 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
     int retiring = 0;
     if (s) {
         s->idle_since = ud_now_ms();
-        if (status || l->cancelled || check_lease(l))
+        if (status || dirty)
             s->unhealthy = 1;
         retiring = s->unhealthy || (s->plugin_capabilities & UD_CAP_THREAD_AFFINE);
         if (retiring) {
-            session **entry = &m->sessions;
+            session **entry = &pool->sessions;
             while (*entry && *entry != s)
                 entry = &(*entry)->next;
             if (*entry) {
                 *entry = s->next;
-                m->count--;
+                s->next = NULL;
             }
         }
-        s->active = 0;
+        s->borrower = NULL;
+        m->physical--;
     }
-    ud_condition_wake(&m->changed);
-    ud_mutex_unlock(&m->mutex);
+    ud_condition_wake(&pool->changed);
+    ud_mutex_unlock(&pool->mutex);
     if (retiring) {
-        ud_status disposed = dispose_session(s);
-        if (disposed) {
-            ud_mutex_lock(&m->mutex);
-            s->unhealthy = 1;
-            s->next = m->sessions;
-            m->sessions = s;
-            m->count++;
-            ud_mutex_unlock(&m->mutex);
-            if (!status)
-                status = disposed;
-        }
+        ud_status disposed = dispose_retired(pool, s);
+        if (!status)
+            status = disposed;
     }
+    status = relay_driver_error(l, status);
     if (l->sql_session_ended)
         l->sql_session_ended(l->sql_session);
     ud_rest_target_close(l->rest);
@@ -1106,41 +1190,41 @@ void ud_connection_lease_cancel(ud_connection_lease *lease) {
     if (!lease || !lease->connection || lease->shared)
         return;
     struct ud_connection_manager *manager = lease->activation->execution->connections;
-    ud_mutex_lock(&manager->mutex);
-    if (lease->cancelled) {
-        ud_mutex_unlock(&manager->mutex);
+    ud_mutex_lock(&manager->pool->mutex);
+    if (atomic_load(&lease->cancelled) || lease->releasing) {
+        ud_mutex_unlock(&manager->pool->mutex);
         return;
     }
-    lease->cancelled = 1;
+    atomic_store(&lease->cancelled, 1);
     lease->pins++;
-    ud_mutex_unlock(&manager->mutex);
+    ud_mutex_unlock(&manager->pool->mutex);
     ud_connection_cancel(lease->connection);
-    ud_mutex_lock(&manager->mutex);
+    ud_mutex_lock(&manager->pool->mutex);
     lease->pins--;
-    ud_condition_wake(&manager->changed);
-    ud_mutex_unlock(&manager->mutex);
+    ud_condition_wake(&manager->pool->changed);
+    ud_mutex_unlock(&manager->pool->mutex);
 }
 void ud_connections_cancel(ud_execution *e) {
     if (!e || !e->connections)
         return;
     struct ud_connection_manager *m = e->connections;
-    ud_mutex_lock(&m->mutex);
+    ud_mutex_lock(&m->pool->mutex);
     for (;;) {
         ud_connection_lease *l = m->leases;
-        while (l && (l->cancelled || !l->connection || l->shared))
+        while (l && (atomic_load(&l->cancelled) || !l->connection || l->shared || l->releasing))
             l = l->next;
         if (!l)
             break;
-        l->cancelled = 1;
+        atomic_store(&l->cancelled, 1);
         l->pins++;
-        ud_mutex_unlock(&m->mutex);
+        ud_mutex_unlock(&m->pool->mutex);
         ud_connection_cancel(l->connection);
-        ud_mutex_lock(&m->mutex);
+        ud_mutex_lock(&m->pool->mutex);
         l->pins--;
-        ud_condition_wake(&m->changed);
+        ud_condition_wake(&m->pool->changed);
     }
-    ud_condition_wake(&m->changed);
-    ud_mutex_unlock(&m->mutex);
+    ud_condition_wake(&m->pool->changed);
+    ud_mutex_unlock(&m->pool->mutex);
 }
 ud_status ud_connections_release_activation(ud_activation *a) {
     struct ud_connection_manager *m = a->execution->connections;
@@ -1148,7 +1232,7 @@ ud_status ud_connections_release_activation(ud_activation *a) {
         return UD_OK;
     int leaked = 0;
     for (;;) {
-        ud_mutex_lock(&m->mutex);
+        ud_mutex_lock(&m->pool->mutex);
         ud_connection_lease *l = m->leases;
         while (l) {
             int retained = 0;
@@ -1159,7 +1243,7 @@ ud_status ud_connections_release_activation(ud_activation *a) {
                 break;
             l = l->next;
         }
-        ud_mutex_unlock(&m->mutex);
+        ud_mutex_unlock(&m->pool->mutex);
         if (!l)
             break;
         leaked = 1;
@@ -1167,19 +1251,49 @@ ud_status ud_connections_release_activation(ud_activation *a) {
     }
     return leaked ? UD_RESOURCE : UD_OK;
 }
+ud_status ud_connection_pool_destroy(ud_connection_pool *pool) {
+    if (!pool)
+        return UD_OK;
+    ud_mutex_lock(&pool->mutex);
+    if (pool->users || pool->closing) {
+        ud_mutex_unlock(&pool->mutex);
+        return UD_BUSY;
+    }
+    pool->closing = 1;
+    session *retired = pool->sessions;
+    pool->sessions = NULL;
+    ud_mutex_unlock(&pool->mutex);
+    ud_status status = dispose_retired(pool, retired);
+    ud_context *ctx = pool->ctx;
+    int owned = pool->owns_context;
+    if (!status && owned && ud_memory_used(ctx) != ud_allocation_bytes(pool))
+        status = UD_BUSY;
+    if (status) {
+        ud_mutex_lock(&pool->mutex);
+        pool->closing = 0;
+        ud_mutex_unlock(&pool->mutex);
+        return status;
+    }
+    ud_condition_destroy(&pool->changed);
+    ud_mutex_destroy(&pool->mutex);
+    ud_free(pool);
+    return owned ? ud_context_destroy(ctx) : UD_OK;
+}
 ud_status ud_connections_destroy(ud_execution *e) {
     struct ud_connection_manager *m = e->connections;
     if (!m)
         return UD_OK;
-    if (m->leases || m->active)
+    ud_connection_pool *pool = m->pool;
+    int external = pool->owns_context;
+    ud_mutex_lock(&pool->mutex);
+    int busy = m->leases || m->active || m->physical;
+    if (!busy && external)
+        pool->users--;
+    ud_mutex_unlock(&pool->mutex);
+    if (busy)
         return UD_BUSY;
-    while (m->sessions) {
-        session *s = m->sessions, *next = s->next;
-        UD_TRY(dispose_session(s));
-        m->sessions = next;
-    }
-    ud_condition_destroy(&m->changed);
-    ud_mutex_destroy(&m->mutex);
+    if (!external)
+        UD_TRY(ud_connection_pool_destroy(pool));
     ud_free(m);
     e->connections = NULL;
     return UD_OK;
@@ -1189,16 +1303,16 @@ ud_status ud_connections_diagnostics(ud_execution *e, ud_bytes *b) {
     if (!m)
         return ud_bytes_put(b, "{}", 2);
     char text[512];
-    ud_mutex_lock(&m->mutex);
+    ud_mutex_lock(&m->pool->mutex);
     int n = snprintf(text, sizeof(text),
                      "{\"sessions\":%u,\"activeLeases\":%u,\"capacity\":%u,\"acquisitions\":%llu,"
                      "\"poolHits\":%llu,\"failures\":%llu,\"waitMs\":%llu,\"commits\":%llu,"
                      "\"rollbacks\":%llu,\"commitUnknown\":%llu}",
-                     m->count, m->active, m->capacity, (unsigned long long)m->acquisitions,
+                     m->pool->count, m->active, m->pool->capacity, (unsigned long long)m->acquisitions,
                      (unsigned long long)m->hits, (unsigned long long)m->failures,
                      (unsigned long long)m->wait_ms, (unsigned long long)m->commits,
                      (unsigned long long)m->rollbacks, (unsigned long long)m->uncertain);
-    ud_mutex_unlock(&m->mutex);
+    ud_mutex_unlock(&m->pool->mutex);
     return ud_bytes_put(b, text, (size_t)n);
 }
 int ud_transaction_active(const ud_activation *activation) {
@@ -1208,10 +1322,10 @@ void ud_transaction_sql_failed(ud_activation *activation, ud_status status) {
     if (!ud_transaction_active(activation) || !status || status == UD_END || status == UD_BUSY)
         return;
     struct ud_connection_manager *manager = activation->execution->connections;
-    ud_mutex_lock(&manager->mutex);
+    ud_mutex_lock(&manager->pool->mutex);
     if (!activation->transaction->sql_failure)
         activation->transaction->sql_failure = status;
-    ud_mutex_unlock(&manager->mutex);
+    ud_mutex_unlock(&manager->pool->mutex);
 }
 ud_status ud_transaction_resource_validate(const ud_activation *activation, ud_string connection) {
     if (!activation || !activation->transaction_serial)
@@ -1671,10 +1785,10 @@ ud_status ud_transaction_leave(ud_activation *activation, ud_status outcome) {
     if (!transaction || transaction->owner != activation)
         return outcome;
     struct ud_connection_manager *manager = activation->execution->connections;
-    ud_mutex_lock(&manager->mutex);
+    ud_mutex_lock(&manager->pool->mutex);
     if (!outcome)
         outcome = transaction->sql_failure;
-    ud_mutex_unlock(&manager->mutex);
+    ud_mutex_unlock(&manager->pool->mutex);
     ud_status status = UD_OK;
     if (!transaction->completed) {
         for (uint32_t index = 0; !outcome && index < transaction->count; index++) {
@@ -1703,14 +1817,14 @@ ud_status ud_transaction_leave(ud_activation *activation, ud_status outcome) {
         } else if (status)
             ud_rule_delivered(activation, transaction->delivery, 2);
     }
-    ud_mutex_lock(&manager->mutex);
+    ud_mutex_lock(&manager->pool->mutex);
     if (status)
         manager->uncertain++;
     else if (outcome)
         manager->rollbacks++;
     else
         manager->commits++;
-    ud_mutex_unlock(&manager->mutex);
+    ud_mutex_unlock(&manager->pool->mutex);
     activation->transaction = NULL;
     ud_status released = transaction_release(transaction);
     return status ? UD_COMMIT_UNKNOWN : released ? released : outcome;
@@ -1799,6 +1913,7 @@ ud_status ud_connection_lease_snapshot_grant(ud_connection_lease *source, ud_act
     if (!grant)
         return UD_RESOURCE;
     grant->activation = owner;
+    atomic_init(&grant->cancelled, 0);
     char *json = NULL;
     uint32_t length = 0;
     ud_status status = ud_json_serialize(source->definition, &json, &length);
@@ -1837,7 +1952,14 @@ ud_status ud_connection_lease_cdc_next(ud_connection_lease *l, ud_cdc_event *e) 
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
     UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
-    return lease_operation_end(l, ud_connection_cdc_next(l->connection, e));
+    ud_status status = ud_connection_cdc_next(l->connection, e);
+    if (!status)
+        status = ud_batch_rehome(l->activation->execution->ctx, &e->after);
+    if (!status)
+        status = ud_batch_rehome(l->activation->execution->ctx, &e->before);
+    if (status && status != UD_BUSY)
+        ud_cdc_event_clear(e);
+    return lease_operation_end(l, status);
 }
 ud_status ud_connection_lease_cdc_confirm(ud_connection_lease *l, ud_string p) {
     if (!l || !l->connection)
@@ -1849,7 +1971,10 @@ ud_status ud_connection_lease_cdc_schema(ud_connection_lease *lease, ud_batch **
     if (!lease || !lease->connection)
         return UD_UNSUPPORTED;
     UD_TRY(lease_operation_begin(lease, UD_ACCESS_READ));
-    return lease_operation_end(lease, ud_connection_cdc_schema(lease->connection, out));
+    ud_status status = ud_connection_cdc_schema(lease->connection, out);
+    if (!status)
+        status = ud_batch_rehome(lease->activation->execution->ctx, out);
+    return lease_operation_end(lease, status);
 }
 ud_status ud_connection_lease_cdc_rebind(ud_connection_lease *lease, const ud_batch *schema,
                                          uint64_t version) {

@@ -266,7 +266,8 @@ ud_status ud_activation_validate_definition(ud_activation *e, uint32_t depth) {
     }
     return UD_OK;
 }
-static ud_status create_execution(ud_string json, const ud_execution_options *options,
+static ud_status create_execution(ud_connection_pool *pool, ud_string json,
+    const ud_execution_options *options,
     ud_string partition_run, ud_string partition_topic,
     const ud_kafka_partition_assignment *assignments, uint32_t assignment_count, ud_execution **out) {
     if (!out)
@@ -453,7 +454,7 @@ static ud_status create_execution(ud_string json, const ud_execution_options *op
         }
     }
     if (!s)
-        s = ud_connections_create(e);
+        s = ud_connections_create(e, pool);
     if (!s)
         s = ud_assets_create(e);
     if (!s)
@@ -472,10 +473,18 @@ static ud_status create_execution(ud_string json, const ud_execution_options *op
     return UD_OK;
 }
 ud_status ud_execution_create_json(ud_string json, const ud_execution_options *options, ud_execution **out) {
-    return create_execution(json, options, (ud_string){0}, (ud_string){0}, NULL, 0, out);
+    return create_execution(NULL, json, options, (ud_string){0}, (ud_string){0}, NULL, 0, out);
 }
 
-ud_status ud_execution_create_partitioned(ud_string json, const ud_execution_options *options,
+ud_status ud_execution_create_json_in_pool(ud_connection_pool *pool, ud_string json,
+                                           const ud_execution_options *options, ud_execution **out) {
+    if (!pool)
+        return UD_INVALID;
+    return create_execution(pool, json, options, (ud_string){0}, (ud_string){0}, NULL, 0, out);
+}
+
+static ud_status create_partitioned(ud_connection_pool *pool, ud_string json,
+    const ud_execution_options *options,
     ud_string run, ud_string topic, const ud_kafka_partition_assignment *parts, uint32_t count, ud_execution **out) {
     if (!out) return UD_INVALID;
     *out = NULL;
@@ -489,7 +498,20 @@ ud_status ud_execution_create_partitioned(ud_string json, const ud_execution_opt
             (i && parts[i - 1].partition >= parts[i].partition) ||
             parts[i].require_checkpoint < 0 || parts[i].require_checkpoint > 1)
             return UD_INVALID;
-    return create_execution(json, options, run, topic, parts, count, out);
+    return create_execution(pool, json, options, run, topic, parts, count, out);
+}
+
+ud_status ud_execution_create_partitioned(ud_string json, const ud_execution_options *options,
+    ud_string run, ud_string topic, const ud_kafka_partition_assignment *parts, uint32_t count, ud_execution **out) {
+    return create_partitioned(NULL, json, options, run, topic, parts, count, out);
+}
+
+ud_status ud_execution_create_partitioned_in_pool(ud_connection_pool *pool, ud_string json,
+    const ud_execution_options *options, ud_string run, ud_string topic,
+    const ud_kafka_partition_assignment *parts, uint32_t count, ud_execution **out) {
+    if (!pool)
+        return UD_INVALID;
+    return create_partitioned(pool, json, options, run, topic, parts, count, out);
 }
 
 ud_status ud_execution_message_partition_positions(ud_execution *e, ud_string connection,

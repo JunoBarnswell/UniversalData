@@ -212,7 +212,7 @@ ud_status ud_connection_definition(ud_activation *, ud_string, const ud_json **,
                                    int *project_scope);
 ud_status ud_connection_definitions_check(const ud_json *);
 typedef struct ud_connection_lease ud_connection_lease;
-ud_status ud_connections_create(ud_execution *);
+ud_status ud_connections_create(ud_execution *, ud_connection_pool *);
 ud_status ud_connections_destroy(ud_execution *);
 void ud_connections_cancel(ud_execution *);
 ud_status ud_connections_release_activation(ud_activation *);

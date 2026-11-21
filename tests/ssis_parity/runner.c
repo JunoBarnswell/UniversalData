@@ -86,7 +86,13 @@ static ud_status resolve(void *user, ud_context *ctx, ud_string tenant, ud_strin
 }
 static void observe(void *user, const ud_execution_event *event) {
     fixture *f = user;
-    if(event->result&&event->activation)fprintf(stderr,"Native diagnostic: %s\n",ud_error(event->activation->execution->ctx));
+    if (event->result && event->activation) {
+        ud_context *ctx = event->activation->execution->ctx;
+        ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION};
+        (void)ud_error_details(ctx, &detail);
+        fprintf(stderr, "Native diagnostic: %s (source=%d, code=%lld, SQLSTATE=%s)\n",
+                ud_error(ctx), detail.source, (long long)detail.native_code, detail.sqlstate);
+    }
     int matches = !f->kill_component || (event->component_id.length == strlen(f->kill_component) &&
                                          !memcmp(event->component_id.data, f->kill_component,
                                                  event->component_id.length));
@@ -171,8 +177,8 @@ int main(int argc, char **argv) {
            (unsigned long long)m.error_rows, (unsigned long long)m.committed_error_rows,
            (unsigned long long)m.acknowledged_error_rows, (int)length, diagnostics);
     ud_free(diagnostics);
-    printf(",\"workerHighWater\":%u,\"treeHighWater\":%u,\"spillBytes\":%llu", m.worker_high_water,
-           m.tree_high_water, (unsigned long long)m.spill_bytes);
+    printf(",\"workerHighWater\":%u,\"treeHighWater\":%llu,\"spillBytes\":%llu", m.worker_high_water,
+           (unsigned long long)m.tree_high_water, (unsigned long long)m.spill_bytes);
     process_usage(stdout);
     printf("}\n");
     OK(ud_execution_destroy(execution));

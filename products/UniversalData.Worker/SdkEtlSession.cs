@@ -41,7 +41,7 @@ internal sealed class SdkEtlSession(HostPolicy policy,
             case "etl.preview":
                 var pipeline = values.GetProperty("pipeline");
                 var selected = pipeline.GetProperty("components").EnumerateArray()
-                    .Where(node => node.GetProperty("component").GetString() == "sql.source")
+                    .Where(node => node.GetProperty("component").GetString() is "sql.source" or "iceberg.source")
                     .Select(node => Text(node.GetProperty("config"), "connection")).ToHashSet(StringComparer.Ordinal);
                 var previewSources = ReadSources(values);
                 var previewScope = Scope(previewSources);
@@ -86,8 +86,8 @@ internal sealed class SdkEtlSession(HostPolicy policy,
             if (!bindings.TryGetValue(reference, out var binding) || binding.Definition.Resource != resource)
                 throw new UniversalDataException((int)StatusCode.Auth, "Native ETL credential cannot be resolved in this source snapshot");
             state.Require(binding, ConnectionAccess.Open);
-            return credentials.GetOrAdd(reference, _ => NativeSqlConfiguration.Create(
-                SdkAtomicRuntime.Dialect(binding.Definition.Kind), state.Connection(binding, native: true)));
+            return credentials.GetOrAdd(reference, _ => binding.Definition.IsDatabase
+                ? state.NativeConnection(binding) : state.SourceCredential(binding));
         } };
     }
 
@@ -210,7 +210,7 @@ internal sealed class SdkEtlSession(HostPolicy policy,
 
     private static (WorkerResponseFrame, WorkerBatchBuffer?) Reply(WorkerRequestFrame request, StatusCode status,
         object? value = null, OperationError? error = null) =>
-        (new(ProductInfo.WorkerRevision, request.Sequence, "result", status,
+        (new(ProductInfo.WorkerRevision, request.SessionId, request.Sequence, "result", status,
             value is null ? null : JsonSerializer.SerializeToElement(value, WorkerProtocol.Json), error), null);
 
     public void Dispose()

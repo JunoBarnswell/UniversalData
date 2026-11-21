@@ -23,8 +23,10 @@ internal static class ManagedSqlStreamScale
         var plugin = Path.GetFullPath(options.PluginPath);
         var amountType = sqlite ? "TEXT" : "DECIMAL(18,2)";
         var targetConnection = options.TargetConnectionString ?? options.ConnectionString;
-        using var source = SqlNative.Open(options.Provider, plugin, options.ConnectionString);
-        using var target = SqlNative.Open(options.Provider, plugin, targetConnection);
+        using var sourceFixture = OpenFixture(options.Provider, plugin, options.ConnectionString);
+        using var targetFixture = OpenFixture(options.Provider, plugin, targetConnection);
+        var source = sourceFixture.Session;
+        var target = targetFixture.Session;
         Execute(source, $"CREATE TABLE {sourceTable}(id BIGINT PRIMARY KEY, label TEXT NOT NULL, amount {amountType} NOT NULL)");
         try
         {

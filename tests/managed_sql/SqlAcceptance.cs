@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using SqlSugar;
 using UniversalData;
 
@@ -6,6 +7,26 @@ namespace ManagedSqlAcceptance;
 
 internal static class SqlAcceptance
 {
+    internal static ManagedSqlFixture OpenFixture(DataSourceKind provider, string plugin, string connectionString)
+    {
+        const string scope = "sql-fixture";
+        const string resource = "database";
+        string configuration = NativeSqlConfiguration.Create(SqlNative.Dialect(provider), connectionString);
+        var document = JsonSerializer.Serialize(new
+        {
+            version = ProductInfo.Protocol, id = scope,
+            connections = new[] { new { id = resource, driver = plugin, resource, credentialReference = scope } },
+            controlFlow = new { tasks = Array.Empty<object>(), constraints = Array.Empty<object>() },
+            dataFlows = Array.Empty<object>()
+        });
+        var execution = new Execution(document, scope,
+            (tenant, name, access) => tenant == scope && (name == plugin || name == resource || access == ConnectionAccess.Network),
+            resolve: (tenant, name, reference) => tenant == scope && name == resource && reference == scope
+                ? configuration : throw new InvalidOperationException("Unexpected fixture credential request"));
+        try { return new(execution, execution.OpenSqlSession(resource)); }
+        catch { execution.Dispose(); throw; }
+    }
+
     internal static int Execute(SqlSessionHandle session, string sql, params SugarParameter[] parameters)
     {
         using var text = new NativeStrings(sql);

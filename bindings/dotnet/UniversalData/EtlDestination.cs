@@ -8,8 +8,9 @@ public sealed class EtlDestination<T>
     private readonly EtlInput input;
     private readonly string target;
     private readonly string table;
+    private readonly string? tableNamespace;
 
-    internal EtlDestination(DataClient client, EtlInput input, string target, string table)
+    internal EtlDestination(DataClient client, EtlInput input, string target, string table, string? tableNamespace = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
         ArgumentException.ThrowIfNullOrWhiteSpace(table);
@@ -17,9 +18,24 @@ public sealed class EtlDestination<T>
         this.input = input;
         this.target = target;
         this.table = table;
+        this.tableNamespace = tableNamespace;
     }
 
-    public EtlPipeline Append() => new(client, input, new(target, table, "append", EntityMapping.For<T>(), []));
+    internal static EtlDestination<T> Iceberg(DataClient client, EtlInput input, string target,
+        string tableNamespace, string? table = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableNamespace);
+        if (input.Stream)
+            throw new UniversalDataException((int)StatusCode.Unsupported, "An Iceberg commit requires a replayable input");
+        return new(client, input, target, table ?? EntityMapping.For<T>().TableName, tableNamespace);
+    }
+
+    public EtlPipeline Append()
+    {
+        if (input.Changes is not null)
+            throw new UniversalDataException((int)StatusCode.Unsupported, "A CDC destination requires declared keys");
+        return new(client, input, new(target, table, "append", EntityMapping.For<T>(), [], tableNamespace));
+    }
 
     public EtlPipeline UpsertBy(Expression<Func<T, object>> key, params Expression<Func<T, object>>[] additional)
     {
@@ -36,8 +52,7 @@ public sealed class EtlDestination<T>
         }
         var mapping = EntityMapping.For<T>();
         var keys = WriteKeyResolver.Resolve(mapping, selectors).Select(member => member.ColumnName).ToArray();
-        return new(client, input, new(target, table, "upsert", mapping, keys));
+        return new(client, input, new(target, table, input.Changes is null ? "upsert" : "changeset", mapping, keys,
+            tableNamespace));
     }
 }
-
-internal sealed record EtlOutput(string Target, string Table, string Mode, EntityMapping Mapping, string[] Keys);

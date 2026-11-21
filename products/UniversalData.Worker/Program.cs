@@ -19,14 +19,14 @@ using(var envelope=JsonDocument.Parse(input))
 var request = JsonSerializer.Deserialize<WorkerRequest>(input,HostPolicy.JsonOptions) ?? throw new InvalidDataException("Invalid Worker request");
 if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticket,"N",out _) || request.Policy is null ||
     request.Identity is null || request.Identity.Grants is null || !HostIdentity.ValidId(request.Identity.Tenant) ||
-    request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "messageConnection" or "schemaCompare" or "kafkaPositions" or "sdk.session"))
+    request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "messageConnection" or "schemaCompare" or "kafkaPositions" or "sdk.worker"))
     throw new InvalidDataException("Incompatible Worker request");
 var policy = request.Policy with { Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated };
-if (request.Mode == "sdk.session")
+if (request.Mode == "sdk.worker")
 {
-    var session = request.Payload?.Deserialize<SdkSessionConfiguration>(WorkerProtocol.Json)
-        ?? throw new InvalidDataException("Missing SDK session assignment");
-    return await UniversalData.Worker.SdkWorker.RunAsync(policy, session);
+    var configuration = request.Payload?.Deserialize<SdkWorkerConfiguration>(WorkerProtocol.Json)
+        ?? throw new InvalidDataException("Missing SDK Worker assignment");
+    return await UniversalData.Worker.SdkWorker.RunAsync(policy, configuration);
 }
 using var watchdog = new CancellationTokenSource();
 using var guardianLost = new CancellationTokenSource();

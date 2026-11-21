@@ -10,6 +10,8 @@ typedef struct ud_aggregate_state {
     uint8_t *hll;
 } ud_aggregate_state;
 ud_status ud_stat_add(ud_aggregate_state *, const ud_aggregate_def *, const ud_value *);
+int ud_stat_retractable(const ud_aggregate_def *);
+ud_status ud_stat_retract(ud_aggregate_state *, const ud_aggregate_def *, const ud_value *);
 ud_status ud_stat_result(const ud_aggregate_state *, const ud_aggregate_def *, const ud_field *,
                          ud_value *);
 ud_status ud_stat_encode(const ud_aggregate_state *, const ud_aggregate_def *, const ud_field *,
