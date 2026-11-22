@@ -196,7 +196,7 @@ ud_status ud_pipeline_parallel_bind(physical_plan *plan, const ud_json *definiti
     if (members == 1 && lanes == 1 && !plan->kafka_stage)
         return UD_OK;
     if ((plan->execution->parallel && !plan->execution->consumer_lane) ||
-        plan->execution->transaction_serial ||
+        plan->execution->transaction_isolation ||
         plan->execution->execution->preview_pipeline)
         return UD_UNSUPPORTED;
     if (plan->kafka_stage)

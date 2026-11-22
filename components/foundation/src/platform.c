@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <bcrypt.h>
 #include <io.h>
+#include <wchar.h>
 static wchar_t *wide(const char *s) {
     int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, NULL, 0);
     if (!n)
@@ -230,19 +231,95 @@ ud_status ud_flush(ud_context *c, FILE *f) {
 #endif
     return UD_OK;
 }
+#ifdef _WIN32
+static int local_ntfs(HANDLE handle) {
+    wchar_t filesystem[16];
+    /* This volume query is unavailable for SMB handles. */
+    return GetVolumeInformationByHandleW(handle, NULL, 0, NULL, NULL, NULL, filesystem,
+                                         sizeof(filesystem) / sizeof(*filesystem)) &&
+           !wcscmp(filesystem, L"NTFS");
+}
+static ud_status sync_windows_path(ud_context *ctx, const wchar_t *path, int directory) {
+    DWORD flags = FILE_FLAG_OPEN_REPARSE_POINT;
+    if (directory)
+        flags |= FILE_FLAG_BACKUP_SEMANTICS;
+    HANDLE handle = CreateFileW(path, GENERIC_WRITE,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                NULL, OPEN_EXISTING, flags, NULL);
+    if (handle == INVALID_HANDLE_VALUE)
+        return ud_fail(ctx, UD_IO, "cannot open publication path for sync");
+    BY_HANDLE_FILE_INFORMATION info;
+    ud_status status = UD_OK;
+    if (!GetFileInformationByHandle(handle, &info) ||
+        (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ||
+        !!(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != directory)
+        status = ud_fail(ctx, UD_IO, "invalid publication path for sync");
+    if (!status && directory && !local_ntfs(handle))
+        status = ud_fail(ctx, UD_UNSUPPORTED, "directory sync requires local NTFS");
+    if (!status && !FlushFileBuffers(handle))
+        status = ud_fail(ctx, UD_IO, "publication path sync failed");
+    if (!CloseHandle(handle) && !status)
+        status = ud_fail(ctx, UD_IO, "publication sync handle close failed");
+    return status;
+}
+#endif
+ud_status ud_sync_file(ud_context *ctx, const char *path) {
+#ifdef _WIN32
+    wchar_t *name = wide(path);
+    if (!name)
+        return UD_INVALID;
+    ud_status status = sync_windows_path(ctx, name, 0);
+    free(name);
+    return status;
+#else
+    FILE *file = NULL;
+    UD_TRY(ud_open_regular(ctx, path, &file));
+    ud_status status = ud_flush(ctx, file);
+    if (fclose(file) && !status)
+        status = ud_fail(ctx, UD_IO, "publication sync file close failed");
+    return status;
+#endif
+}
 ud_status ud_sync_parent(ud_context *c, const char *path) {
 #ifdef _WIN32
-    /* Windows publication uses a write-through rename handle. */
-    (void)c;
-    (void)path;
-    return UD_OK;
+    wchar_t *name = wide(path);
+    DWORD capacity = name ? GetFullPathNameW(name, 0, NULL, NULL) : 0;
+    if (!capacity) {
+        free(name);
+        return UD_INVALID;
+    }
+    wchar_t *parent = ud_alloc(c, (size_t)capacity * sizeof(*parent));
+    DWORD length = parent ? GetFullPathNameW(name, capacity, parent, NULL) : 0;
+    free(name);
+    ud_status status = parent ? UD_OK : UD_RESOURCE;
+    if (!status && (!length || length >= capacity))
+        status = UD_INVALID;
+    if (!status) {
+        while (length > 3 && parent[length - 1] == L'\\')
+            parent[--length] = L'\0';
+        wchar_t *slash = wcsrchr(parent, L'\\');
+        if (!slash)
+            status = UD_INVALID;
+        else {
+            /* Retain the separator in the root of a local drive. */
+            if (slash > parent && slash[-1] == L':')
+                slash++;
+            *slash = L'\0';
+            status = sync_windows_path(c, parent, 1);
+        }
+    }
+    ud_free(parent);
+    return status;
 #else
-    const char *slash = strrchr(path, '/');
-    char *parent = slash ? ud_strdup_n(c, path, slash == path ? 1 : (size_t)(slash - path))
-                         : ud_strdup_n(c, ".", 1);
+    size_t end = strlen(path);
+    while (end > 1 && path[end - 1] == '/')
+        end--;
+    while (end && path[end - 1] != '/')
+        end--;
+    char *parent = end ? ud_strdup_n(c, path, end == 1 ? 1 : end - 1) : ud_strdup_n(c, ".", 1);
     if (!parent)
         return UD_RESOURCE;
-    int flags = O_RDONLY;
+    int flags = O_RDONLY | O_CLOEXEC;
 #ifdef O_DIRECTORY
     flags |= O_DIRECTORY;
 #endif
@@ -256,6 +333,10 @@ ud_status ud_sync_parent(ud_context *c, const char *path) {
         failed = 1;
     return failed ? ud_fail(c, UD_IO, "publication directory sync failed") : UD_OK;
 #endif
+}
+ud_status ud_confirm_file(ud_context *ctx, const char *path) {
+    UD_TRY(ud_sync_file(ctx, path));
+    return ud_sync_parent(ctx, path);
 }
 #ifdef _WIN32
 static ud_status publish_windows_file(ud_context *ctx, const char *from, const char *to,
@@ -286,17 +367,19 @@ static ud_status publish_windows_file(ud_context *ctx, const char *from, const c
     rename->RootDirectory = NULL;
 
     const ULONGLONG deadline = GetTickCount64() + 1000;
+    int unsupported = 0;
     DWORD error;
     for (;;) {
         HANDLE handle = CreateFileW(source, DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                     NULL, OPEN_EXISTING,
                                     FILE_FLAG_WRITE_THROUGH | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
         if (handle != INVALID_HANDLE_VALUE) {
-            /* Readers sharing deletion keep their old generation handle.
-             * Write-through makes the rename itself durable after the caller
-             * has synced the staged file. */
-            BOOL published = SetFileInformationByHandle(handle, FileRenameInfoEx, rename, (DWORD)bytes);
-            error = published ? ERROR_SUCCESS : GetLastError();
+            unsupported = !local_ntfs(handle);
+            /* NTFS flushes the namespace metadata of a write-through rename.
+             * Readers sharing deletion keep their old generation handle. */
+            BOOL published = !unsupported && SetFileInformationByHandle(handle, FileRenameInfoEx,
+                                                                        rename, (DWORD)bytes);
+            error = unsupported ? ERROR_NOT_SUPPORTED : published ? ERROR_SUCCESS : GetLastError();
             CloseHandle(handle);
         } else
             error = GetLastError();
@@ -309,6 +392,8 @@ static ud_status publish_windows_file(ud_context *ctx, const char *from, const c
     }
     ud_free(rename);
     free(source);
+    if (unsupported)
+        return ud_fail(ctx, UD_UNSUPPORTED, "atomic durable publication requires local NTFS");
     return error == ERROR_SUCCESS ? UD_OK : ud_fail(ctx, UD_IO,
         "atomic publication failed (Win32 %lu): %s", (unsigned long)error, to);
 }

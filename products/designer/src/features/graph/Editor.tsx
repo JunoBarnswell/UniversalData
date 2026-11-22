@@ -39,7 +39,7 @@ import {
   WandSparkles,
   FileInput,
 } from "lucide-react";
-import { api, post, encode, decode, ApiError } from "../../api";
+import { api, post, encode, decode, ApiError, commitUnknown } from "../../api";
 import {
   defaults,
   emptyPackage,
@@ -48,6 +48,7 @@ import {
   isControlFlow,
   controlGraph,
   controlScopes,
+  transactionLabel,
   updateControl,
   type CatalogDocument,
   type Component,
@@ -98,6 +99,18 @@ export interface OpenWorkspace {
   document?: PackageDocument;
   revision?: string;
   import?: boolean;
+}
+interface PublicationAttempt {
+  requestId: string;
+  pending: boolean;
+  input: {
+    document: PackageDocument;
+    expectedPackageRevision: string;
+    schedules: TemplatePublishOptions["schedules"];
+    environment?: TemplatePublishOptions["environment"];
+    parameters?: string;
+    run: boolean;
+  };
 }
 interface Props {
   components: Component[];
@@ -215,6 +228,7 @@ function EditorCanvas({
     [confirmation, setConfirmation] = useState(false);
   const [draftSavedText, setDraftSavedText] = useState<string>();
   const [templatePublish, setTemplatePublish] = useState<TemplatePublishOptions>();
+  const [publication, setPublication] = useState<PublicationAttempt>();
   const [remoteDraft, setRemoteDraft] = useState<DraftRecord>();
   const [draftMessage, setDraftMessage] = useState("草稿尚未保存"),
     [draftReady, setDraftReady] = useState(!request?.document),
@@ -266,10 +280,10 @@ function EditorCanvas({
     previewBlock = descriptor?.category !== 4 && descriptor?.previewSafe === false && !descriptor.previewSchema
       ? "此 Native 组件未声明只读预览能力"
       : undefined;
-  const effectivePlan =
-    preview?.text === dataText && preview.flow === flow
-      ? (preview.value.diagnostics as unknown as NativePlan)
-      : plan?.value;
+  const currentPreview = preview?.text === dataText && preview.flow === flow
+    ? (preview.value.diagnostics as unknown as NativePlan) : undefined;
+  const effectivePlan = currentPreview ?? plan?.value;
+  const currentPlan = currentPreview ?? (plan?.text === text ? plan.value : undefined);
   const boundNodes =
     effectivePlan?.pipelines
       ?.find((value) => value.id === flow)
@@ -657,12 +671,7 @@ function EditorCanvas({
           });
           setMessage(`已保存版本 v${result.revision}`);
         } else {
-          const result = await post<{
-            id: string;
-            deployment: Deployment;
-            revision: string;
-          }>("/publications", {
-            requestId: crypto.randomUUID(),
+          const input = {
             document: snapshot,
             expectedPackageRevision: expected,
             schedules: templatePublish?.schedules ?? [],
@@ -673,15 +682,40 @@ function EditorCanvas({
               ? { parameters: encode(templatePublish.parameters) }
               : {}),
             run: false,
-          });
-          baseRevisions.current.set(snapshot.id, result.revision);
+          };
+          const attempt = publication && (publication.pending || encode(publication.input) === encode(input))
+            ? publication
+            : { requestId: crypto.randomUUID(), input, pending: false };
+          setPublication(attempt);
+          let result: { id: string; deployment: Deployment; revision: string };
+          try {
+            result = await post<typeof result>(attempt.pending ? "/publications/lookup" : "/publications", {
+              requestId: attempt.requestId,
+              ...attempt.input,
+            });
+          } catch (failure) {
+            if (attempt.pending && failure instanceof ApiError && failure.status === 404) {
+              setPublication({ ...attempt, pending: false });
+              setMessage("Catalog 当前没有原发布回执。可以重新发布当前版本。");
+              return;
+            }
+            if (attempt.pending || commitUnknown(failure)) {
+              setPublication({ ...attempt, pending: true });
+              setMessage(`发布结果待确认。请求编号 ${attempt.requestId}。${attempt.pending ? String(failure) : "请查询发布回执。"}`);
+              return;
+            }
+            throw failure;
+          }
+          setPublication(undefined);
+          const publishedDocument = attempt.input.document;
+          baseRevisions.current.set(publishedDocument.id, result.revision);
           setSaved({
-            id: snapshot.id,
+            id: publishedDocument.id,
             revision: result.revision,
-            text: snapshotText,
-            document: snapshot,
+            text: encode(publishedDocument),
+            document: publishedDocument,
           });
-          setPublished({ deployment: result.deployment, document: snapshot });
+          setPublished({ deployment: result.deployment, document: publishedDocument });
           setMessage(`已发布 v${result.revision}，等待正式执行`);
         }
       } catch (error) {
@@ -690,7 +724,7 @@ function EditorCanvas({
         setBusy(false);
       }
     },
-    [registerPlan, document, templatePublish],
+    [registerPlan, document, templatePublish, publication],
   );
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -1215,7 +1249,7 @@ function EditorCanvas({
           },
           {
             id: "publish",
-            label: "发布版本",
+            label: publication?.pending ? "查询发布回执" : "发布版本",
             run: () => void runAction("publish"),
             disabled: busy,
           },
@@ -1316,7 +1350,7 @@ function EditorCanvas({
             onClick={() => void runAction("publish")}
           >
             <Upload size={16} />
-            发布版本
+            {publication?.pending ? "查询发布回执" : "发布版本"}
           </button>
           <button
             disabled={!published || busy}
@@ -1657,10 +1691,14 @@ function EditorCanvas({
           </h2>
           {graph && (graph.parallelism || graph.delivery ||
             graph.components.some((node) => node.component === "mq.source" || node.component === "mq.destination")) ? (
-            <DataFlowSettings graph={graph} change={(settings) => edit((current) => ({
+            <DataFlowSettings graph={graph} bound={currentPlan?.pipelines?.find((value) => value.id === flow)}
+              change={(settings) => edit((current) => ({
               ...current,
               dataFlows: current.dataFlows.map((value) => value.id === flow ? { ...value, ...settings } : value),
             }))} />
+          ) : null}
+          {control && currentPlan?.transaction ? (
+            <p className="property-help">Native 事务声明 · {transactionLabel(currentPlan.transaction)}</p>
           ) : null}
           {item && descriptor ? (
             <ComponentInspector

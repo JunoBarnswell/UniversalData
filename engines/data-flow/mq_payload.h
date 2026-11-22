@@ -25,7 +25,8 @@ typedef struct ud_mq_settings {
 ud_status ud_mq_settings_parse(const ud_component_context *, const ud_json *, ud_mq_settings *);
 ud_status ud_mq_schema(const ud_component_context *, const ud_json *, const ud_mq_settings *,
                        ud_batch **);
-ud_status ud_mq_decode(const ud_message *, int, ud_schema_registry *, ud_batch *, ud_id *);
+ud_status ud_mq_decode(const ud_message *, int format, int strict, ud_schema_registry *,
+                       ud_batch *, ud_id *);
 ud_status ud_mq_encode(const ud_batch *, uint32_t row, int, ud_schema_registry *, ud_message *);
 ud_status ud_mq_project_payload(const ud_batch *, ud_batch **);
 ud_status ud_mq_encode_metadata(const ud_batch *, uint32_t row, ud_message *);

@@ -230,7 +230,9 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
                 <p>
                   {run.requiresJournal === false
                     ? "这是普通流式执行，未建立 Native Journal；已知提交量保留在历史中，不能恢复或重放。"
-                    : "等待目标回执确认后恢复。"}
+                    : run.canResume === false && !run.elastic
+                      ? "恢复需要确认原 Worker 已退出且原 Journal 可用。"
+                      : "核对原执行回执后恢复。"}
                 </p>
               ) : null}
               <div className="detail-actions">
@@ -238,7 +240,7 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
                 run.requiresJournal !== false ? (
                   <button
                     className="primary"
-                    disabled={!run.executionId}
+                    disabled={!run.executionId || (run.canResume === false && !run.elastic)}
                     onClick={() => void control("resume")}
                   >
                     恢复

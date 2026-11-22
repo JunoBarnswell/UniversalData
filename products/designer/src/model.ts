@@ -54,6 +54,7 @@ export interface DataFlowParallelism {
 }
 export type DataFlowDelivery =
   | { mode: "atLeastOnce" }
+  | { mode: "eventReceipt" }
   | { mode: "kafkaTransaction"; checkpointTopic: string; checkpointPartition?: number; kafkaStage?: boolean; kafkaMerge?: boolean };
 export interface DataFlow {
   id: string;
@@ -272,6 +273,7 @@ export type NativeDeliveryVisibility =
 export type NativeDeliveryConfirmation =
   | "Receipt"
   | "BrokerTransaction"
+  | "EventReceipt"
   | "Response"
   | "None";
 export interface NativeDelivery {
@@ -297,14 +299,34 @@ export interface BoundNode {
   delivery?: NativeDelivery;
 }
 export interface NativePlan {
-  pipelines: { id: string; trees: { nodes: BoundNode[] }[] }[];
-  tasks?: { activation: string; httpStatus?: number; responseHeaders?: string; responseHeadersOmitted?: boolean }[];
+  transaction?: BoundTransaction;
+  pipelines: BoundPipeline[];
+  tasks?: { activation: string; transaction?: BoundTransaction; httpStatus?: number; responseHeaders?: string; responseHeadersOmitted?: boolean }[];
   schemas?: {
     task: string;
     component: string;
     result: number;
     diff: { compatible: boolean; changes: { kind: string; columnId: string; column?: string }[] };
   }[];
+}
+export interface BoundTransaction {
+  isolation: "readCommitted" | "repeatableRead" | "serializable";
+  scope: "task" | "epoch";
+  participants: string[];
+}
+export interface BoundPipeline {
+  id: string;
+  deliveryMode?: DataFlowDelivery["mode"];
+  transaction?: BoundTransaction;
+  trees: { nodes: BoundNode[] }[];
+}
+export function transactionLabel(transaction: BoundTransaction): string {
+  const isolation = {
+    readCommitted: "读已提交",
+    repeatableRead: "可重复读",
+    serializable: "可串行化",
+  }[transaction.isolation];
+  return `${transaction.scope === "epoch" ? "按检查点" : "任务级"} · ${isolation} · ${transaction.participants.join("、")}`;
 }
 export const isControlFlow = (flow: string) =>
   flow === "control" || flow.startsWith("control:");

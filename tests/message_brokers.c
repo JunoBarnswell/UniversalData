@@ -1,5 +1,8 @@
 #include "ud/plugin.h"
 #include "../engines/package/internal.h"
+#ifdef UD_TEST_EVENT_RECEIPT
+#include <sqlite3.h>
+#endif
 
 enum { CASE_BINARY, CASE_JSON, CASE_REDELIVERY, CASE_INVALID, CASES };
 enum { CASE_AVRO = CASES };
@@ -17,6 +20,7 @@ typedef struct broker_fixture {
     const ud_json *endpoints;
     const char *driver;
     ud_string credentials, group, scratch;
+    ud_string event_database;
     ud_string ingress[CASES], egress[2];
     ud_string transaction_source, transaction_target, checkpoint_topic;
     registry_fixture registry;
@@ -102,6 +106,9 @@ static ud_status resolve(void *user, ud_context *memory, ud_string requested_ten
     ud_string secret;
     if (ud_same(requested_resource, resource) && ud_same(requested_reference, reference))
         secret = f->credentials;
+    else if (f->event_database.length && ud_same(requested_resource, f->event_database) &&
+             ud_same(requested_reference, reference))
+        secret = f->event_database;
     else if (f->registry.url.length && ud_same(requested_resource, f->registry.url) &&
              ud_same(requested_reference, f->registry.reference))
         secret = f->registry.credentials;
@@ -259,7 +266,7 @@ static ud_message test_message(const broker_fixture *f, ud_string bytes, ud_mess
 }
 
 static ud_status publish_at(broker_fixture *f, ud_string address, const ud_string *values,
-                             uint32_t count, int32_t partition) {
+                             uint32_t count, int32_t partition, const ud_string *identities) {
     enum { capacity = 4 };
     ud_message messages[capacity];
     ud_message_result results[capacity] = {{0}};
@@ -270,6 +277,8 @@ static ud_status publish_at(broker_fixture *f, ud_string address, const ud_strin
     ud_message_header header = {header_name, header_value};
     for (uint32_t i = 0; i < count; i++) {
         messages[i] = test_message(f, values[i], &header);
+        if (identities)
+            messages[i].id = identities[i];
         if (partition >= 0)
             messages[i].partition = partition;
     }
@@ -289,7 +298,7 @@ static ud_status publish_at(broker_fixture *f, ud_string address, const ud_strin
 
 static ud_status publish(broker_fixture *f, ud_string address, const ud_string *values,
                           uint32_t count) {
-    return publish_at(f, address, values, count, -1);
+    return publish_at(f, address, values, count, -1, NULL);
 }
 
 static ud_status receive_until(ud_connection *connection, uint32_t timeout, ud_message *message) {
@@ -477,24 +486,22 @@ static ud_status await_commit_and_stop(ud_execution *execution, uint32_t count) 
     return UD_TIMEOUT;
 }
 
-static ud_status pipeline_case(broker_fixture *f, int format, ud_string input, ud_string output,
-                                const char *journal, ud_status expected_failure, uint32_t count) {
-    ud_bytes json = {.ctx = f->memory, .limit = 65536};
+static ud_status run_pipeline(broker_fixture *f, const ud_bytes *json, const char *journal,
+                               uint32_t batch_rows, ud_status expected_failure, uint32_t count,
+                               ud_execution_observer observer) {
     char *state = NULL;
-    ud_status status = package_document(f, format, input, output, &json);
-    if (!status)
-        status = ud_join_path(f->memory, f->scratch.data, journal, &state);
+    ud_status status = ud_join_path(f->memory, f->scratch.data, journal, &state);
     ud_execution_options options = {.struct_size = sizeof(options), .abi_version = UD_ABI_VERSION,
         .context = {.struct_size = sizeof(ud_context_options), .abi_version = UD_ABI_VERSION,
                     .memory_limit = 128 * 1024 * 1024}, .edge_capacity = 2,
-        .max_batch_rows = 4, .max_depth = 32, .max_concurrency = 2, .timeout_ms = 100000,
+        .max_batch_rows = batch_rows, .max_depth = 32, .max_concurrency = 2, .timeout_ms = 100000,
         .tenant = tenant, .authorize = authorize, .authorize_user = f,
-        .resolve = resolve, .resolve_user = f};
+        .resolve = resolve, .resolve_user = f, .observe = observer};
     if (!status)
         options.state_directory = text(state);
     ud_execution *execution = NULL;
     if (!status)
-        status = ud_execution_create_json((ud_string){(char *)json.data, (uint32_t)json.size},
+        status = ud_execution_create_json((ud_string){(char *)json->data, (uint32_t)json->size},
                                           &options, &execution);
     if (!status)
         status = ud_execution_start(execution);
@@ -504,7 +511,9 @@ static ud_status pipeline_case(broker_fixture *f, int format, ud_string input, u
             ud_execution_metrics metrics = {.struct_size = sizeof(metrics),
                                              .abi_version = UD_ABI_VERSION};
             status = ud_execution_get_metrics(execution, &metrics);
-            if (!status && (metrics.state != UD_EXEC_FAILED || metrics.committed_rows ||
+            int expected_state = expected_failure == UD_COMMIT_UNKNOWN
+                                     ? UD_EXEC_RECOVERY_REQUIRED : UD_EXEC_FAILED;
+            if (!status && (metrics.state != expected_state || metrics.committed_rows != count ||
                             failed != expected_failure)) {
                 fprintf(stderr, "Expected %s (%d), got %s (%d), execution state %d\n",
                         ud_status_name(expected_failure), expected_failure, ud_status_name(failed),
@@ -531,6 +540,15 @@ static ud_status pipeline_case(broker_fixture *f, int format, ud_string input, u
             status = destroyed;
     }
     ud_free(state);
+    return status;
+}
+
+static ud_status pipeline_case(broker_fixture *f, int format, ud_string input, ud_string output,
+                                const char *journal, ud_status expected_failure, uint32_t count) {
+    ud_bytes json = {.ctx = f->memory, .limit = 65536};
+    ud_status status = package_document(f, format, input, output, &json);
+    if (!status)
+        status = run_pipeline(f, &json, journal, 4, expected_failure, count, NULL);
     ud_bytes_clear(&json);
     return status;
 }
@@ -811,9 +829,9 @@ static ud_status kafka_transaction(broker_fixture *f, int mode) {
     ud_string document = {(const char *)json.data, (uint32_t)json.size};
     if (mode != TRANSACTION_TAKEOVER) {
         if (!status)
-            status = publish_at(f, f->transaction_source, &input, 1, 1);
+            status = publish_at(f, f->transaction_source, &input, 1, 1, NULL);
         if (!status)
-            status = publish_at(f, f->transaction_source, &untouched, 1, 0);
+            status = publish_at(f, f->transaction_source, &untouched, 1, 0, NULL);
         if (!status)
             status = run_transaction(f, document, 0,
                 mode == TRANSACTION_CRASH_OWNER ? pause_committed_owner : NULL);
@@ -927,12 +945,141 @@ static ud_status run_cases(broker_fixture *f) {
     return UD_OK;
 }
 
+#ifdef UD_TEST_EVENT_RECEIPT
+static ud_status event_receipt_package(broker_fixture *f, const char *sqlite, ud_bytes *json) {
+    UD_TRY(append(json, "{\"version\":" UD_PROTOCOL_VERSION_TEXT
+                        ",\"id\":\"broker-event-fixture\",\"connections\":["
+                        "{\"id\":\"broker\",\"resource\":\"mq-fixture-resource\","
+                        "\"credentialReference\":\"fixture\",\"driver\":"));
+    UD_TRY(quoted(json, text(f->driver)));
+    UD_TRY(append(json, "},{\"id\":\"db\",\"credentialReference\":\"fixture\",\"driver\":"));
+    UD_TRY(quoted(json, text(sqlite)));
+    UD_TRY(append(json, ",\"resource\":"));
+    UD_TRY(quoted(json, f->event_database));
+    UD_TRY(append(json, "}],\"controlFlow\":{\"tasks\":[{\"id\":\"execute\",\"kind\":\"dataFlow\","
+                        "\"config\":{\"pipeline\":\"events\"}}],\"constraints\":[]},"
+                        "\"dataFlows\":[{\"id\":\"events\",\"delivery\":{\"mode\":\"eventReceipt\"},"
+                        "\"components\":[{\"id\":\"input\",\"component\":\"mq.source\",\"config\":{"
+                        "\"connection\":\"broker\",\"targetType\":\"queue\",\"address\":"));
+    UD_TRY(quoted(json, f->ingress[CASE_JSON]));
+    UD_TRY(append(json, ",\"format\":\"json\",\"includeMetadata\":false,\"prefetch\":4,\"schema\":"));
+    UD_TRY(append(json, structured_schema));
+    return append(json, "}},{\"id\":\"output\",\"component\":\"sql.destination\",\"config\":{"
+                        "\"connection\":\"db\",\"table\":\"received\",\"mode\":\"append\","
+                        "\"mapping\":[{\"source\":\"id\",\"target\":\"id\"}],\"provisionReceipts\":true}}],"
+                        "\"paths\":[{\"from\":\"input\",\"output\":0,\"to\":\"output\",\"input\":0}]}]}");
+}
+
+static void interrupt_after_sql_commit(void *unused, const ud_execution_event *event) {
+    (void)unused;
+    if (event->kind == UD_EXEC_EVENT_TARGET_COMMITTED && ud_named(event->component_id, "output"))
+        (void)ud_activation_report_fault(event->activation, UD_COMMIT_UNKNOWN,
+                                        text("Interrupted after SQL commit and before broker ACK"));
+}
+
+static ud_status verify_event_database(sqlite3 *database, const char *ids, uint32_t receipts) {
+    sqlite3_stmt *statement = NULL;
+    int rc = sqlite3_prepare_v2(database,
+        "SELECT (SELECT group_concat(id, ',') FROM (SELECT id FROM received ORDER BY id)),"
+        " (SELECT count(*) FROM ud_sdk_receipts_v11)", -1, &statement, NULL);
+    ud_status status = UD_CORRUPT;
+    if (rc == SQLITE_OK && sqlite3_step(statement) == SQLITE_ROW) {
+        const char *actual = (const char *)sqlite3_column_text(statement, 0);
+        if (actual && !strcmp(actual, ids) && sqlite3_column_int64(statement, 1) == receipts)
+            status = UD_OK;
+    }
+    sqlite3_finalize(statement);
+    return status;
+}
+
+static ud_status verify_event_redelivered(broker_fixture *f, ud_string payload, ud_string id,
+                                           int settle) {
+    ud_connection *connection = NULL;
+    ud_message message = {0};
+    ud_status status = receive_test(f, f->ingress[CASE_JSON], payload, BROKER_WAIT_MS,
+                                    &message, &connection);
+    if (!status && (!message.redelivered || !ud_same(message.id, id)))
+        status = UD_CORRUPT;
+    if (!status && settle)
+        status = ud_connection_message_acknowledge(connection, &message.delivery, 1);
+    ud_message_clear(&message);
+    ud_status closed = ud_connection_close(connection);
+    return status ? status : closed;
+}
+
+static ud_status event_receipt_cases(broker_fixture *f, const ud_bytes *package, sqlite3 *database) {
+    ud_string queue = f->ingress[CASE_JSON], id = text("immutable-event-1");
+    ud_string original = text("{\"id\":1,\"label\":\"original\"}");
+    UD_TRY(assert_empty(f, queue, 250));
+    UD_TRY(publish_at(f, queue, &original, 1, -1, &id));
+    UD_TRY(run_pipeline(f, package, "event-commit", 1, UD_COMMIT_UNKNOWN, 1,
+                       interrupt_after_sql_commit));
+    UD_TRY(verify_event_database(database, "1", 1));
+    UD_TRY(verify_event_redelivered(f, original, id, 0));
+
+    /* Start a new execution and use a different batch cut. The original
+     * delivery and normalized duplicate must leave the same business effect. */
+    ud_string replay[] = {text("{\"label\":\"original\",\"id\":1}"),
+                          text("{\"id\":2,\"label\":null}")};
+    ud_string ids[] = {id, text("immutable-event-2")};
+    UD_TRY(publish_at(f, queue, replay, 2, -1, ids));
+    UD_TRY(run_pipeline(f, package, "event-replay", 4, UD_OK, 3, NULL));
+    UD_TRY(verify_event_database(database, "1,2", 2));
+    UD_TRY(assert_empty(f, queue, 250));
+
+    /* label is not projected to SQL. A change still conflicts with the
+     * receipt for the full normalized input. */
+    ud_string changed = text("{\"id\":1,\"label\":\"changed\"}");
+    UD_TRY(publish_at(f, queue, &changed, 1, -1, &id));
+    UD_TRY(run_pipeline(f, package, "event-conflict", 2, UD_CORRUPT, 0, NULL));
+    UD_TRY(verify_event_database(database, "1,2", 2));
+    UD_TRY(verify_event_redelivered(f, changed, id, 1));
+
+    ud_string missing_id = text("{\"id\":3,\"label\":null}");
+    UD_TRY(publish(f, queue, &missing_id, 1));
+    UD_TRY(run_pipeline(f, package, "event-no-id", 2, UD_QUALITY, 0, NULL));
+    UD_TRY(verify_event_database(database, "1,2", 2));
+    return verify_event_redelivered(f, missing_id, (ud_string){0}, 1);
+}
+
+static ud_status event_receipt(broker_fixture *f, const char *sqlite) {
+    if (f->broker != BROKER_RABBITMQ)
+        return UD_SCHEMA;
+    char *name = NULL;
+    UD_TRY(ud_join_path(f->memory, f->scratch.data, "event-receipts.db", &name));
+    f->event_database = text(name);
+    sqlite3 *database = NULL;
+    ud_status status = sqlite3_open_v2(name, &database, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE,
+                                      NULL) == SQLITE_OK ? UD_OK : UD_IO;
+    if (!status && sqlite3_exec(database, "CREATE TABLE received(id INTEGER NOT NULL)",
+                                NULL, NULL, NULL) != SQLITE_OK)
+        status = UD_IO;
+    ud_bytes package = {.ctx = f->memory, .limit = 65536};
+    if (!status)
+        status = event_receipt_package(f, sqlite, &package);
+    if (!status)
+        status = event_receipt_cases(f, &package, database);
+    ud_bytes_clear(&package);
+    sqlite3_close(database);
+    f->event_database = (ud_string){0};
+    ud_free(name);
+    if (!status)
+        puts("RabbitMQ to SQL stable event receipts: PASS");
+    return status;
+}
+#endif
+
 int main(int argc, char **argv) {
     int registry_mode = argc == 4 && !strcmp(argv[3], "--registry");
     int crash_mode = argc == 4 && !strcmp(argv[3], "--crash-owner");
     int takeover_mode = argc == 4 && !strcmp(argv[3], "--takeover");
-    if (argc != 3 && !registry_mode && !crash_mode && !takeover_mode) {
-        fputs("Usage: test_message_brokers MODULE CONFIG [--registry|--crash-owner|--takeover]\n", stderr);
+    int event_mode = 0;
+#ifdef UD_TEST_EVENT_RECEIPT
+    event_mode = argc == 5 && !strcmp(argv[3], "--event-receipt");
+#endif
+    if (argc != 3 && !registry_mode && !crash_mode && !takeover_mode && !event_mode) {
+        fputs("Usage: test_message_brokers MODULE CONFIG "
+              "[--registry|--crash-owner|--takeover|--event-receipt SQLITE_MODULE]\n", stderr);
         return 2;
     }
     broker_fixture fixture = {.driver = argv[1]};
@@ -964,6 +1111,10 @@ int main(int argc, char **argv) {
             else if (crash_mode || takeover_mode)
                 status = fixture.broker == BROKER_KAFKA ? kafka_transaction(&fixture,
                     crash_mode ? TRANSACTION_CRASH_OWNER : TRANSACTION_TAKEOVER) : UD_SCHEMA;
+#ifdef UD_TEST_EVENT_RECEIPT
+            else if (event_mode)
+                status = event_receipt(&fixture, argv[4]);
+#endif
             else
                 status = run_cases(&fixture);
         }

@@ -35,8 +35,14 @@ internal sealed class SdkEtlSession(HostPolicy policy,
                 var connection = Text(values, "connection");
                 var inspected = sources.Where(source => source.Definition.Name == connection).ToArray();
                 ValidateSources(environment, inspected, cancellationToken);
-                using (var inspection = CreateExecution(values, environment))
+                var inspectionDefinition = PrepareDefinition(Text(values, "package"));
+                // Use the same Journal-required binding as execution, without opening a Journal.
+                string? validationDirectory = inspectionDefinition.RequiresJournal
+                    ? policy.ExecutionDirectory(Guid.NewGuid().ToString("N")) : null;
+                try
                 {
+                    using var inspection = CreateExecution(values, environment, directory: validationDirectory,
+                        prepared: inspectionDefinition);
                     string json = request.Operation switch
                     {
                         "etl.inspect" => inspection.Explain(),
@@ -44,6 +50,11 @@ internal sealed class SdkEtlSession(HostPolicy policy,
                         _ => inspection.DiscoverSchema(connection, Text(values, "table"))
                     };
                     return JsonReply(request, json);
+                }
+                finally
+                {
+                    if (validationDirectory is not null && Directory.Exists(validationDirectory))
+                        Directory.Delete(validationDirectory);
                 }
             case "etl.preview":
                 var pipeline = values.GetProperty("pipeline");

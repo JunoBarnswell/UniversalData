@@ -8,11 +8,13 @@ SDK 在 Linux 启用资源隔离时，Worker 从同一个节点预算预约逻�
 
 ## Catalog 与接管
 
-单机模式使用 SQLite。集群使用 PostgreSQL 17 的可写服务地址。Catalog 共享文档校验、摘要、修订、条件更新、作业触发和租约逻辑。PostgreSQL 事务先锁定 Catalog 时钟，再校验数据库时间上的 Management 任期与执行租约。同步提交确认后才把开始许可传给 Agent。运行记录、原生执行事实和日程游标沿用 Catalog 的版本事务。队列从当前状态索引读取有限页，并在租户之间轮转。
+单机模式使用本机 SQLite。集群使用受保护的 PostgreSQL 17 写端点。Catalog 共享文档校验、摘要、修订、条件更新、作业触发和租约逻辑。PostgreSQL 事务先锁定 Catalog 时钟，再按数据库时间校验 Management 任期与执行租约。Native 确认同步副本已重放对应 WAL 后，Management 才能把开始许可传给 Agent。队列从当前状态索引读取有限页，并在租户之间轮转。 [Catalog 提交与回读](catalog.md)
 
-参考部署使用一台 Windows Management、一台 Linux Management、两台以上 Worker，以及通过 Patroni 和多数仲裁管理的三个 PostgreSQL 17 实例。参考 [Patroni 配置](../../examples/worker-cluster/patroni-config.yml)启用严格同步模式和数据库旧主隔离，在 Management HTTPS 前使用按 `/health/ready` 探测的稳定入口。连接串文件指向可写端点，生产环境配置服务账号、TLS 校验和库级权限。两个 Management 实例共用一份 32 字节 Base64 加密密钥，并各自持有唯一的管理节点编号。管理服务就绪要求取得 12 秒任期并能读取集群身份。任期每 3 秒续约，续约结果无法确认时撤销本机就绪状态。
+参考部署使用一台 Windows Management、一台 Linux Management、两台以上 Worker，以及分布在独立故障域的三个 PostgreSQL 17 实例和三个 DCS 投票成员。写端点只向通过 Patroni `/primary` 探测的节点转发。启用严格同步、旧主 watchdog fencing 和受约束的提升策略。服务身份使用 TLS 验证，连接串同时提供 TLS 主机名 `host` 和稳定写端点的数字 `hostaddr`。Catalog 服务账号需要读取复制状态，可授予 `pg_read_all_stats`。两个 Management 实例使用同一 Catalog 加密密钥并各自持有唯一节点编号。 [Patroni 配置](../../examples/worker-cluster/patroni-config.yml)
 
-Agent 配置所有候选 Management 地址与各证书的 SHA-256 指纹。证书仍需通过系统信任链和主机名校验。Agent 每 5 秒发送心跳，10 秒后节点停止承接新任务，20 秒后判为离线。执行许可根据 Agent 发出续租询问时的单调时钟计算，最长 20 秒。连接中断时，Agent 在许可内保留原 Worker 和已持久化的报告。新主通过 Agent 启动身份、任务代号、PID 与已接收的报告序号接续，先重新校验原执行者权限。已授权且外部提交无法核实的任务进入 `RecoveryRequired`。能用 Kafka 截点恢复的任务走 Broker 校验，其他任务从仍可读取的原日记恢复。
+`/health/live` 只报告进程存活。`/health/ready` 报告控制面任期和最近一次同步写确认。Management 每 3 秒尝试续约 12 秒的任期，确认丢失即撤回就绪。按租户查看执行就绪使用认证后的 `/api/execution-readiness`。业务提交确认丢失时 API 返回 HTTP 503 和 `CommitUnknown`，执行请求按原 `requestId` 回读 `/api/executions/requests/{requestId}`，发布通过 `/api/publications/lookup` 提交原请求内容核对回执。
+
+Agent 配置所有候选 Management 地址与各证书的 SHA-256 指纹。证书仍需通过系统信任链和主机名校验。Agent 每 5 秒发送心跳，10 秒后停止承接新任务，20 秒后判为离线。执行许可根据 Agent 发出续租询问时的单调时钟计算，最长 20 秒。新主按 Agent 启动身份、任务代号、PID 和报告序号接续原 Worker。非 Kafka 执行从原执行者保管的 Journal 恢复，Worker 确认原执行已结束并独占原 Journal 后才能继续。证据不足的运行保持 `RecoveryRequired`。合格 Kafka 作业通过稳定事务生产者身份和 Broker 检查点接管。Worker 与 Agent 同批升级至私有协议 12。
 
 ## Kafka 分区
 
@@ -37,8 +39,8 @@ ud_cli catalog migrate verify POLICY_FILE POSTGRESQL_CONNECTION_FILE ENCRYPTION_
 | 测试 | 资源 |
 |---|---|
 | `management_worker_autoscale` | Windows 或 Linux 的 Host 构建，两个 Worker 并行写出一千万行 CSV，核对行数和 SHA-256 |
-| `management_sentinel_ha` | `UD_TEST_SENTINEL_POSTGRESQL_CONNECTION_FILE` 指向空的专用 PostgreSQL 17 数据库。测试在 Linux 上启动两个 Management 进程和两个 mTLS Agent，检查任务接续和 Cookie |
-| `management_catalog_migration` | `UD_TEST_CATALOG_POSTGRESQL_CONNECTION_FILE` 指向另一空的专用 PostgreSQL 17 数据库 |
+| `management_sentinel_ha` | `UD_TEST_SENTINEL_POSTGRESQL_CONNECTION_FILE` 指向有同步副本的空白专用 PostgreSQL 17 数据库。测试在 Linux 上启动两个 Management 进程和 mTLS Agent，检查任务接续和 Cookie |
+| `management_catalog_migration` | `UD_TEST_CATALOG_POSTGRESQL_CONNECTION_FILE` 指向另一有同步副本的空白专用 PostgreSQL 17 数据库 |
 | `management_kafka_elastic` | `UD_TEST_CLUSTER_KAFKA_ELASTIC_CONFIG` 提供 `managementUrl`、`identity`、`broker`、`package`、`sourceTopic`、`targetTopic` 和 `consumerGroup`，执行环境需要 Python `confluent-kafka`。输入和输出 Topic 专供这一次测试使用，默认验证一千万条 |
 
 Windows 和 Linux 的双向接管、单向网络故障、数据库多数派丢失，以及事务交接期间的进程故障，需要在实际部署拓扑记录。应用接单恢复目标为 20 秒，数据库主切换目标为 60 秒。

@@ -7,6 +7,7 @@ import { Button } from "../../shared/design-system/Controls";
 import {
   executionStateName,
   failurePhase,
+  transactionLabel,
   type NativePlan,
   type PreviewEdge,
   type RunState,
@@ -156,8 +157,11 @@ export function RunMonitor({
   ));
   if (run?.canResume === true) allowed.add("resume");
   if (run?.canResume === false) allowed.delete("resume");
+  const transaction = facts?.diagnostics?.transaction;
   const diagnosticNodes = facts?.diagnostics?.pipelines.flatMap((pipeline) =>
-    pipeline.trees.flatMap((tree) => tree.nodes.map((node) => ({ ...node, pipeline: pipeline.id }))),
+    pipeline.trees.flatMap((tree) => tree.nodes.map((node) => ({
+      ...node, pipeline: pipeline.id, transaction: pipeline.transaction,
+    }))),
   ) ?? [];
   return (
     <section className={`run-monitor${compact ? " compact" : ""}`}>
@@ -258,21 +262,25 @@ export function RunMonitor({
             : "提交状态未确认。等待 Native 回执与 Journal 恢复，不能将重试视为已提交。"}
         </p>
       ) : null}
-      {diagnosticNodes.length ? (
+      {diagnosticNodes.length || transaction ? (
         <details className="native-diagnostics">
           <summary>Native 诊断与目标承诺</summary>
-          <div className="data-grid-scroll">
-            <table>
-              <thead><tr><th>Pipeline / 节点</th><th>结果</th><th>源重放</th><th>可见性</th><th>确认</th></tr></thead>
-              <tbody>{diagnosticNodes.map((node) => <tr key={`${node.pipeline}/${node.id}`}>
-                <td>{node.pipeline} / {node.id}</td>
-                <td>{node.result ?? 0}</td>
-                <td>{node.sourceReplay === undefined ? "—" : node.sourceReplay ? "支持" : "不支持"}</td>
-                <td>{node.delivery?.visibility ?? "—"}</td>
-                <td>{node.delivery?.confirmation ?? "—"}</td>
-              </tr>)}</tbody>
-            </table>
-          </div>
+          {transaction ? <p>作业事务声明 · {transactionLabel(transaction)}</p> : null}
+          {diagnosticNodes.length ? (
+            <div className="data-grid-scroll">
+              <table>
+                <thead><tr><th>Pipeline / 节点</th><th>结果</th><th>源重放</th><th>可见性</th><th>确认</th><th>事务</th></tr></thead>
+                <tbody>{diagnosticNodes.map((node) => <tr key={`${node.pipeline}/${node.id}`}>
+                  <td>{node.pipeline} / {node.id}</td>
+                  <td>{node.result ?? 0}</td>
+                  <td>{node.sourceReplay === undefined ? "—" : node.sourceReplay ? "支持" : "不支持"}</td>
+                  <td>{node.delivery?.visibility ?? "—"}</td>
+                  <td>{node.delivery?.confirmation ?? "—"}</td>
+                  <td>{node.transaction ? transactionLabel(node.transaction) : "—"}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+          ) : null}
         </details>
       ) : null}
       <div className="data-grid-scroll">

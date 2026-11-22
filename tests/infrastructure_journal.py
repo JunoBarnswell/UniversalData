@@ -1,10 +1,27 @@
 """Run actual native segmented recovery, corruption and retirement acceptance."""
+import hashlib
 import os
 import pathlib
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
+
+
+def prior_tail(directory):
+    tail = (directory / "journal.tail").read_bytes()
+    sequence, = struct.unpack_from("<Q", tail, 8)
+    segment = sorted(directory.glob("segment-*.udg"))[-1].read_bytes()
+    offset = 0
+    while offset < len(segment):
+        length, = struct.unpack_from("<Q", segment, offset)
+        offset += 8
+        if struct.unpack_from("<Q", segment, offset + 8)[0] == sequence:
+            previous = tail[:8] + struct.pack("<Q", sequence - 1) + segment[offset + 16:offset + 48]
+            return previous + hashlib.sha256(previous).digest()
+        offset += length
+    raise AssertionError("last acknowledged frame was not found")
 
 
 def reopen_with_tail_reader(directory, run):
@@ -51,6 +68,13 @@ with tempfile.TemporaryDirectory(prefix="ud-journal-") as folder:
         assert result.returncode == 0, (mode, result.returncode, result.stdout, result.stderr)
         return result.stdout.strip()
     print(run("journal", live))
+    confirmation = root / "confirmation"
+    shutil.copytree(live, confirmation)
+    tail = confirmation / "journal.tail"
+    expected_tail = tail.read_bytes()
+    tail.write_bytes(prior_tail(confirmation))
+    run("journal-confirm", confirmation)
+    assert tail.read_bytes() == expected_tail
     print(reopen_with_tail_reader(live, run))
     assert len(list(live.glob("*.udg"))) <= 1
     assert 1 <= len(list(live.glob("*.uds"))) <= 2

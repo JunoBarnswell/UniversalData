@@ -192,10 +192,8 @@ public sealed partial class TenantDispatcher
                 JsonSerializer.Serialize(deploymentState with { Id = deploymentStateId }, HostPolicy.JsonOptions),
                 jobId, jobRevision, JsonSerializer.Serialize(job with { Id = jobId }, HostPolicy.JsonOptions),
                 occurrenceKey, occurrenceRevision, occurrenceDocument, runKey, runRevision, runDocument);
-            /* A replay returns the original receipt. Refresh persisted definitions
-             * before updating in-memory projections so a newly generated timestamp,
-             * vault reference or run is never mistaken for the committed one. */
-            Refresh();
+            // The confirmed Catalog receipt is the reply. The dispatcher
+            // reloads definitions independently before scheduling.
             return ReadReceipt(receiptText, deploymentId);
         }
     }

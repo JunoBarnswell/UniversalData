@@ -15,6 +15,7 @@ internal sealed class ClusterCatalog
     private readonly byte[] key;
     private readonly AsyncLocal<CatalogLease?> scope = new();
     internal Func<CatalogLease?>? Authority { private get; set; }
+    internal CatalogLease? PinnedAuthority => scope.Value;
 
     internal ClusterCatalog(string connectionFile, string keyFile)
     {
@@ -28,9 +29,16 @@ internal sealed class ClusterCatalog
 
     internal Catalog Open(string tenant, bool election = false, bool initialize = false)
     {
+        var lease = election ? null : Authority?.Invoke();
+        if (!election && scope.Value is { } pinned)
+        {
+            if (Authority is not null && (lease is null || lease.Generation != pinned.Generation))
+                throw new UniversalDataException((int)StatusCode.Transient, "Catalog leadership is no longer confirmed",
+                    new(ErrorSource.Catalog, StatusCode.Transient, "Catalog leadership is no longer confirmed"));
+            lease = pinned;
+        }
         var catalog = Catalog.OpenPostgreSql(connection, tenant,
             (scopeTenant, resource, _) => scopeTenant == tenant && resource == "ud-catalog", initialize);
-        var lease = election ? null : scope.Value ?? Authority?.Invoke();
         try
         {
             if (lease is not null)

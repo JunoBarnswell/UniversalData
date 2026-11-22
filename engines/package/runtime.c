@@ -592,8 +592,20 @@ static ud_status execute(ud_execution *e) {
             e->options.timeout_ms > UINT64_MAX - now ? UINT64_MAX : now + e->options.timeout_ms;
     ud_activation_notify(&e->root, UD_EXEC_RUNNING, UD_OK);
     ud_status s = pool ? pool : ud_activation_check(&e->root);
-    if (!s)
+    if (!s) {
         s = ud_checkpoint_open(e);
+        if (s && s != UD_BUSY && e->options.resume) {
+            ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION};
+            if (ud_error_details(e->ctx, &detail) || !detail.cause)
+                detail.cause = s;
+            ud_mutex_lock(&e->diagnostics_lock);
+            e->error_details[UD_COMMIT_UNKNOWN] = detail;
+            ud_mutex_unlock(&e->diagnostics_lock);
+            if (s != UD_COMMIT_UNKNOWN)
+                s = ud_fail(e->ctx, UD_COMMIT_UNKNOWN, "Original Journal could not be verified (%s)",
+                            ud_status_name(s));
+        }
+    }
     if (!s)
         s = ud_execution_prepare_buffers(e);
     if (!s) {
@@ -948,11 +960,14 @@ ud_status ud_execution_explain(ud_execution *e, char **out, uint32_t *length) {
     ud_bytes bytes = {.ctx = e->ctx};
     ud_status status = ud_bytes_put(&bytes, "{\"version\":", sizeof("{\"version\":") - 1);
     char version[128];
-    int n =
-        snprintf(version, sizeof(version), "%u,\"workerLimit\":%u,\"control\":", UD_PLAN_VERSION,
-                 e->options.max_concurrency);
+    int n = snprintf(version, sizeof(version), "%u,\"workerLimit\":%u", UD_PLAN_VERSION,
+                     e->options.max_concurrency);
     if (!status)
         status = ud_bytes_put(&bytes, version, (size_t)n);
+    if (!status)
+        status = ud_transaction_describe(&e->root, &bytes);
+    if (!status)
+        status = ud_bytes_put(&bytes, ",\"control\":", sizeof(",\"control\":") - 1);
     if (!status)
         status =
             ud_control_explain(&e->root, ud_member(e->package->document, "controlFlow"), &bytes);
@@ -979,6 +994,8 @@ ud_status ud_execution_diagnostics(ud_execution *e, char **out, uint32_t *length
     ud_status status = ud_bytes_put(&bytes, "{\"packageId\":", sizeof("{\"packageId\":") - 1);
     if (!status)
         status = ud_json_quote(&bytes, e->package->id.data, e->package->id.length);
+    if (!status)
+        status = ud_transaction_describe(&e->root, &bytes);
     if (!status)
         status = ud_bytes_put(&bytes, ",\"connections\":", sizeof(",\"connections\":") - 1);
     if (!status)

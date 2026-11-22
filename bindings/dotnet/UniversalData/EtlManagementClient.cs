@@ -9,10 +9,17 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
 {
     public ValueTask<Result<JobPublicationReceipt>> PublishJobAsync(JobPublicationRequest request,
         CancellationToken cancellation = default) =>
-        Send<JobPublicationReceipt>(HttpMethod.Post, "/api/publications", request, cancellation);
+        Send<JobPublicationReceipt>(HttpMethod.Post, "/api/publications", request, cancellation,
+            mutationId: request.RequestId);
+
+    /// <summary>Resolve a publication using its original request. End denotes confirmed absence.</summary>
+    public ValueTask<Result<JobPublicationReceipt>> FindPublicationAsync(JobPublicationRequest request,
+        CancellationToken cancellation = default) =>
+        Send<JobPublicationReceipt>(HttpMethod.Post, "/api/publications/lookup", request, cancellation,
+            notFoundIsEnd: true);
 
     public ValueTask<Result<JsonElement>> SaveJobAsync(JobDefinition job, CancellationToken cancellation = default) =>
-        Send<JsonElement>(HttpMethod.Put, $"/api/jobs/{Segment(job.Id)}", job, cancellation);
+        Send<JsonElement>(HttpMethod.Put, $"/api/jobs/{Segment(job.Id)}", job, cancellation, mutation: true);
 
     public ValueTask<Result<long[]>> PreviewScheduleAsync(string job, JobSchedule schedule,
         CancellationToken cancellation = default) =>
@@ -21,7 +28,7 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
     public ValueTask<Result<JobOccurrence>> RunJobAsync(string job, string requestId,
         string? occurrence = null, CancellationToken cancellation = default) =>
         Send<JobOccurrence>(HttpMethod.Post, $"/api/jobs/{Segment(job)}/runs",
-            new { requestId, occurrenceId = occurrence }, cancellation);
+            new { requestId, occurrenceId = occurrence }, cancellation, mutationId: requestId);
 
     public ValueTask<Result<JobOccurrence[]>> JobHistoryAsync(string job, string? afterId = null,
         CancellationToken cancellation = default) =>
@@ -33,7 +40,13 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
 
     public ValueTask<Result<JsonElement>> StartExecutionAsync(ExecutionSubmission request,
         CancellationToken cancellation = default) =>
-        Send<JsonElement>(HttpMethod.Post, "/api/executions", request, cancellation);
+        Send<JsonElement>(HttpMethod.Post, "/api/executions", request, cancellation, mutationId: request.RequestId);
+
+    /// <summary>Read the accepted execution for this caller's request. End denotes confirmed absence.</summary>
+    public ValueTask<Result<EtlExecutionStatus>> FindExecutionAsync(string requestId,
+        CancellationToken cancellation = default) =>
+        Send<EtlExecutionStatus>(HttpMethod.Get, $"/api/executions/requests/{Segment(requestId)}", null,
+            cancellation, notFoundIsEnd: true);
 
     public ValueTask<Result<EtlExecutionStatus>> ExecutionAsync(string runId,
         CancellationToken cancellation = default) =>
@@ -42,24 +55,29 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
     public async ValueTask<Result> StopExecutionAsync(string runId, CancellationToken cancellation = default)
     {
         var response = await Send<JsonElement>(HttpMethod.Post, $"/api/executions/{Segment(runId)}/stop",
-            null, cancellation, expectValue: false).ConfigureAwait(false);
+            null, cancellation, expectValue: false, mutation: true).ConfigureAwait(false);
         return new(response.Code, response.Error);
     }
 
     public async ValueTask<Result> CancelExecutionAsync(string runId, CancellationToken cancellation = default)
     {
         var response = await Send<JsonElement>(HttpMethod.Post, $"/api/executions/{Segment(runId)}/cancel",
-            null, cancellation, expectValue: false).ConfigureAwait(false);
+            null, cancellation, expectValue: false, mutation: true).ConfigureAwait(false);
         return new(response.Code, response.Error);
     }
 
     public ValueTask<Result<EtlExecutionStatus>> ResumeExecutionAsync(string runId,
         CancellationToken cancellation = default) =>
-        Send<EtlExecutionStatus>(HttpMethod.Post, $"/api/executions/{Segment(runId)}/resume", null, cancellation);
+        Send<EtlExecutionStatus>(HttpMethod.Post, $"/api/executions/{Segment(runId)}/resume", null,
+            cancellation, mutation: true);
 
     private async ValueTask<Result<T>> Send<T>(HttpMethod method, string path, object? body,
-        CancellationToken cancellation, bool expectValue = true)
+        CancellationToken cancellation, bool expectValue = true, bool notFoundIsEnd = false,
+        bool mutation = false, string? mutationId = null)
     {
+        mutation |= mutationId is not null;
+        if (cancellation.IsCancellationRequested)
+            return new(StatusCode.Cancelled, default, new(ErrorSource.Transport, StatusCode.Cancelled, "Management request cancelled"));
         try
         {
             using var request = new HttpRequestMessage(method, path);
@@ -74,28 +92,53 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
                 if (!expectValue) return new(StatusCode.Ok, default);
                 var value = await response.Content.ReadFromJsonAsync<T>(WorkerProtocol.Json, cancellation)
                     .ConfigureAwait(false);
+                if (value is null or JsonElement { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined })
+                    return mutation ? Unconfirmed<T>(mutationId) :
+                        new(StatusCode.Protocol, default, new(ErrorSource.Http, StatusCode.Protocol, "Management returned an empty result"));
                 return new(StatusCode.Ok, value);
             }
             int status = (int)response.StatusCode;
+            if (notFoundIsEnd && response.StatusCode == HttpStatusCode.NotFound)
+                return new(StatusCode.End, default);
             Result? failure = null;
             try { failure = await response.Content.ReadFromJsonAsync<Result>(WorkerProtocol.Json, cancellation)
                     .ConfigureAwait(false); }
             catch (JsonException) { }
             if (failure is { IsSuccess: false } result)
-                return new(result.Code, default, result.Error is null ? null : result.Error with { HttpStatus = status });
+            {
+                var detail = result.Error is null ? null : result.Error with { HttpStatus = status };
+                if (mutation && result.Code == StatusCode.CommitUnknown)
+                    return Unconfirmed<T>(mutationId, detail, status);
+                return new(result.Code, default, detail);
+            }
+            if (mutation && response.StatusCode is HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or
+                HttpStatusCode.GatewayTimeout)
+                return Unconfirmed<T>(mutationId, httpStatus: status);
             var code = response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized
                 ? StatusCode.Auth : StatusCode.HttpStatus;
             return new(code, default, new(ErrorSource.Http, code, "Management request rejected", HttpStatus: status));
         }
         catch (OperationCanceledException)
         {
-            return new(StatusCode.Cancelled, default, new(ErrorSource.Transport, StatusCode.Cancelled, "Management request cancelled"));
+            return mutation ? Unconfirmed<T>(mutationId) :
+                new(StatusCode.Cancelled, default, new(ErrorSource.Transport, StatusCode.Cancelled, "Management request cancelled"));
         }
         catch (Exception error) when (error is HttpRequestException or IOException or JsonException or InvalidOperationException)
         {
+            if (mutation && error is not InvalidOperationException)
+                return Unconfirmed<T>(mutationId);
             var status = error is JsonException ? StatusCode.Protocol : StatusCode.Io;
             return new(status, default, new(ErrorSource.Transport, status, "Management service unavailable"));
         }
+    }
+
+    private static Result<T> Unconfirmed<T>(string? requestId, OperationError? detail = null, int? httpStatus = null)
+    {
+        var error = detail ?? new(ErrorSource.Transport, StatusCode.CommitUnknown, "Management did not confirm the request",
+            HttpStatus: httpStatus);
+        if (requestId is not null)
+            error = error with { Message = $"{error.Message} (request {requestId})" };
+        return new(StatusCode.CommitUnknown, default, error);
     }
 
     private static string Segment(string value) => Uri.EscapeDataString(value);

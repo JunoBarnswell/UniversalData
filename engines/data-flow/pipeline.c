@@ -481,7 +481,7 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
         if (!p->trees || !p->tree_order)
             return UD_RESOURCE;
         p->concurrency =
-            ud_transaction_active(e) || e->transaction_serial ? 1 : ud_execution_concurrency(e);
+            ud_transaction_active(e) || e->transaction_isolation ? 1 : ud_execution_concurrency(e);
         for (uint32_t i = 0; i < p->count; i++) {
             node *n = p->nodes + order[i];
             n->tree = n->descriptor.synchronous_input >= 0
@@ -774,7 +774,9 @@ static ud_status route(void *user, uint32_t port, ud_batch *batch) {
 }
 static ud_status configure_plan(physical_plan *p, const ud_json *definition, emit_target *targets) {
     ud_activation *e = p->execution;
-    (void)definition;
+    UD_TRY(ud_pipeline_delivery_bind(p, definition));
+    const uint8_t *event_receipt_binding = ud_named(p->delivery_mode, "eventReceipt")
+                                              ? p->event_receipt_binding : NULL;
     /* Entire pipeline schema/configuration is validated before any acquisition. */
     for (uint32_t i = 0; i < p->count; i++) {
         node *n = p->nodes + p->order[i];
@@ -790,12 +792,13 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                             .task_id = e->task_id,
                             .pipeline_id = p->id,
                             .component_id = n->id,
+                            .event_receipt_binding = event_receipt_binding,
                             .deadline = e->deadline,
                             .depth = e->depth,
                             .scope_authority = e,
                             .parallel = e->parallel || (p->tree_count > 1 && p->concurrency > 1),
                             .transaction = e->transaction,
-                            .transaction_serial = e->transaction_serial,
+                            .transaction_isolation = e->transaction_isolation,
                             .transaction_epoch = e->transaction_epoch,
                             .transaction_participants = e->transaction_participants};
         atomic_init(&n->activation.cancelled, 0);
@@ -829,7 +832,7 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                                                .component_id = n->id,
                                                .field_scope = scope};
 
-        if (n->activation.transaction_serial && ud_member(n->configuration, "connection")) {
+        if (n->activation.transaction_isolation && ud_member(n->configuration, "connection")) {
             ud_string connection;
             UD_TRY(ud_json_string(ud_member(n->configuration, "connection"), &connection));
             UD_TRY(ud_transaction_resource_validate(&n->activation, connection));
@@ -962,7 +965,8 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
             }
         }
     }
-    UD_TRY(ud_pipeline_kafka_bind(p, definition));
+    if (ud_named(p->delivery_mode, "kafkaTransaction"))
+        UD_TRY(ud_pipeline_kafka_bind(p, ud_member(definition, "delivery")));
     UD_TRY(ud_pipeline_parallel_bind(p, definition));
     return ud_pipeline_validate_contract(p);
 }

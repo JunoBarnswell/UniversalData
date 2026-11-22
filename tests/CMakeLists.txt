@@ -516,6 +516,10 @@ endif()
 if(TARGET ud_package)
   add_executable(test_file_generation file_generation.c)
   target_link_libraries(test_file_generation PRIVATE ud_package)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(test_file_generation PRIVATE UD_TEST_FSYNC_WRAP)
+    target_link_options(test_file_generation PRIVATE "LINKER:--wrap=fsync")
+  endif()
   add_test(NAME file_generation_process_recovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/file_generation.py $<TARGET_FILE:test_file_generation>)
 endif()
 
@@ -602,6 +606,18 @@ if(TARGET ud_package)
       set_tests_properties(integration_${broker} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS "real-integration;mq")
     endif()
   endforeach()
+  if(TARGET ud_connector_rabbitmq AND TARGET ud_connector_sqlite AND Python3_Interpreter_FOUND)
+    target_compile_definitions(test_message_brokers PRIVATE UD_TEST_EVENT_RECEIPT)
+    target_link_libraries(test_message_brokers PRIVATE SQLite::SQLite3)
+    add_test(NAME integration_rabbitmq_event_receipt COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_RABBITMQ_CONFIG
+      $<TARGET_FILE:test_message_brokers> $<TARGET_FILE:ud_connector_rabbitmq>
+      --event-receipt $<TARGET_FILE:ud_connector_sqlite>)
+    set_tests_properties(integration_rabbitmq integration_rabbitmq_event_receipt
+      PROPERTIES RESOURCE_LOCK ud_integration_rabbitmq)
+    set_tests_properties(integration_rabbitmq_event_receipt PROPERTIES SKIP_RETURN_CODE 77
+      TIMEOUT 240 LABELS "real-integration;mq;rabbitmq;recovery")
+  endif()
   if(TARGET ud_connector_kafka AND Python3_Interpreter_FOUND)
     add_test(NAME integration_kafka_schema_registry COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_KAFKA_REGISTRY_CONFIG

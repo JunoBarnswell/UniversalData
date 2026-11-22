@@ -1258,7 +1258,7 @@ void ud_transaction_sql_failed(ud_activation *activation, ud_status status) {
     ud_mutex_unlock(&manager->pool->mutex);
 }
 ud_status ud_transaction_resource_validate(const ud_activation *activation, ud_string connection) {
-    if (!activation || !activation->transaction_serial)
+    if (!activation || !activation->transaction_isolation)
         return UD_OK;
     const ud_json *participants = activation->transaction_participants;
     for (uint32_t index = 0; index < ud_json_size(participants); index++) {
@@ -1452,6 +1452,43 @@ static ud_status transaction_release(struct ud_transaction *transaction) {
     ud_free(transaction);
     return status;
 }
+static const char *const transaction_isolations[] = {
+    [UD_ISOLATION_READ_COMMITTED] = "readCommitted",
+    [UD_ISOLATION_REPEATABLE_READ] = "repeatableRead",
+    [UD_ISOLATION_SERIALIZABLE] = "serializable"
+};
+
+static ud_status transaction_isolation_check(ud_context *ctx, int32_t dialect,
+                                             int32_t isolation, uint32_t count, int epoch) {
+    if (dialect == UD_SQL_SQLITE &&
+        (count != 1 || epoch || isolation != UD_ISOLATION_SERIALIZABLE))
+        return ud_fail(ctx, UD_UNSUPPORTED, "SQLite requires one serializable task-scoped participant");
+    if (dialect == UD_SQL_ORACLE && isolation == UD_ISOLATION_REPEATABLE_READ)
+        return ud_fail(ctx, UD_UNSUPPORTED, "Oracle does not support repeatable read isolation");
+    return UD_OK;
+}
+
+ud_status ud_transaction_describe(const ud_activation *activation, ud_bytes *out) {
+    if (!activation->transaction_isolation)
+        return UD_OK;
+    const char *isolation = transaction_isolations[activation->transaction_isolation];
+    const char *scope = activation->transaction_epoch ? "epoch" : "task";
+    char header[120];
+    int count = snprintf(header, sizeof(header),
+                         ",\"transaction\":{\"isolation\":\"%s\",\"scope\":\"%s\",\"participants\":[",
+                         isolation, scope);
+    UD_TRY(ud_bytes_put(out, header, (size_t)count));
+    const ud_json *participants = activation->transaction_participants;
+    for (uint32_t index = 0; index < ud_json_size(participants); index++) {
+        ud_string participant;
+        UD_TRY(ud_json_string(ud_json_at(participants, index), &participant));
+        if (index)
+            UD_TRY(ud_bytes_put(out, ",", 1));
+        UD_TRY(ud_json_quote(out, participant.data, participant.length));
+    }
+    return ud_bytes_put(out, "]}", 2);
+}
+
 ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy, int validate) {
     if (!policy)
         return UD_OK;
@@ -1459,13 +1496,10 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
     UD_TRY(ud_json_keys(policy, keys, 5));
     ud_string mode;
     UD_TRY(ud_json_string(ud_member(policy, "mode"), &mode));
+    int inherited = activation->transaction || (validate && activation->transaction_isolation);
     if (ud_named(mode, "notSupported")) {
-        if (activation->transaction)
+        if (inherited)
             return UD_UNSUPPORTED;
-        activation->transaction = NULL;
-        activation->transaction_serial = 0;
-        activation->transaction_epoch = 0;
-        activation->transaction_participants = NULL;
         return UD_OK;
     }
     if (ud_named(mode, "supported"))
@@ -1477,13 +1511,12 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
         UD_TRY(ud_json_string(ud_member(policy, "scope"), &scope));
     if (!ud_named(scope, "task") && !ud_named(scope, "epoch"))
         return UD_SCHEMA;
-    if (ud_named(scope, "epoch")) {
+    int epoch = ud_named(scope, "epoch");
+    if (epoch) {
         ud_string kind = {0};
         UD_TRY(ud_json_string(ud_member(activation->task_definition, "kind"), &kind));
-        if (!ud_named(kind, "dataFlow") || activation->transaction ||
-            activation->transaction_serial)
+        if (!ud_named(kind, "dataFlow") || inherited)
             return UD_UNSUPPORTED;
-        activation->transaction_epoch = 1;
     }
     const ud_json *participants = ud_member(policy, "participants");
     uint32_t count = ud_json_size(participants);
@@ -1491,17 +1524,21 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
         return UD_SCHEMA;
     if (!activation->execution->options.state_directory.length)
         return UD_UNSUPPORTED;
-    int32_t isolation = UD_ISOLATION_SERIALIZABLE;
+    int32_t isolation = inherited ? activation->transaction_isolation : UD_ISOLATION_SERIALIZABLE;
     if (ud_member(policy, "isolation")) {
         ud_string value;
         UD_TRY(ud_json_string(ud_member(policy, "isolation"), &value));
-        isolation = ud_named(value, "serializable")     ? UD_ISOLATION_SERIALIZABLE
-                    : ud_named(value, "repeatableRead") ? UD_ISOLATION_REPEATABLE_READ
-                    : ud_named(value, "readCommitted")  ? UD_ISOLATION_READ_COMMITTED
-                                                        : 0;
-        if (!isolation)
+        for (isolation = UD_ISOLATION_READ_COMMITTED; isolation <= UD_ISOLATION_SERIALIZABLE;
+             isolation++) {
+            if (ud_named(value, transaction_isolations[isolation]))
+                break;
+        }
+        if (isolation > UD_ISOLATION_SERIALIZABLE)
             return UD_SCHEMA;
     }
+    if (inherited && isolation != activation->transaction_isolation)
+        return ud_fail(activation->execution->ctx, UD_UNSUPPORTED,
+                       "nested transaction declares a different isolation level");
     int provision = 0;
     if (ud_member(policy, "provisionReceipts")) {
         const char *value;
@@ -1528,17 +1565,26 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
         if (ud_named(driver, "file") || ud_named(driver, "excel") || network_driver(driver) ||
             ud_named(driver, "process"))
             return UD_UNSUPPORTED;
-        if (activation->transaction) {
+        int32_t dialect = ud_named(driver, "ud:sqlite") ? UD_SQL_SQLITE
+                          : ud_named(driver, "ud:oracle_oci") ? UD_SQL_ORACLE
+                                                              : UD_SQL_CANONICAL;
+        UD_TRY(transaction_isolation_check(activation->execution->ctx, dialect, isolation, count, epoch));
+        if (inherited) {
             int member = 0;
-            for (uint32_t existing = 0; existing < activation->transaction->count; existing++)
-                member |= ud_same(activation->transaction->participants[existing].connection, id);
+            const ud_json *outer = activation->transaction_participants;
+            for (uint32_t existing = 0; existing < ud_json_size(outer); existing++) {
+                ud_string participant;
+                UD_TRY(ud_json_string(ud_json_at(outer, existing), &participant));
+                member |= ud_same(participant, id);
+            }
             if (!member)
                 return UD_UNSUPPORTED;
         }
     }
-    if (activation->transaction)
+    if (inherited)
         return UD_OK;
-    activation->transaction_serial = 1;
+    activation->transaction_isolation = isolation;
+    activation->transaction_epoch = epoch;
     activation->transaction_participants = participants;
     if (validate)
         return UD_OK;
@@ -1592,6 +1638,9 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
             else if (!participant->local &&
                      !(capabilities & UD_CONNECT_TRANSACTION_PARTICIPANT))
                 status = UD_UNSUPPORTED;
+            if (!status)
+                status = transaction_isolation_check(activation->execution->ctx,
+                    ud_connection_dialect(participant->lease->connection), isolation, count, epoch);
         }
     }
     /* Capability-check the complete set before provisioning or starting a branch. */
@@ -1876,6 +1925,15 @@ ud_status ud_connection_lease_resource(const ud_connection_lease *l, ud_string *
         return UD_INVALID;
     *out = l->resource;
     return UD_OK;
+}
+ud_status ud_connection_lease_require_connector(const ud_connection_lease *lease, const char *id) {
+    if (!lease || !id)
+        return UD_INVALID;
+    if (!lease->session || !lease->session->plugin)
+        return UD_UNSUPPORTED;
+    ud_plugin_api plugin = {.struct_size = sizeof(plugin), .abi_version = UD_PLUGIN_ABI};
+    UD_TRY(ud_plugin_info(lease->session->plugin, &plugin));
+    return plugin.id && !strcmp(plugin.id, id) ? UD_OK : UD_UNSUPPORTED;
 }
 ud_status ud_connection_lease_snapshot_grant(ud_connection_lease *source, ud_activation *owner,
                                              ud_connection_lease **out) {

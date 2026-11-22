@@ -30,6 +30,7 @@ int main(int argc, char **argv) {
         o.abi_version = UD_ABI_VERSION;
         OK(ud_catalog_open(ctx, &o, &c));
         CHECK(ud_catalog_get(c, &key, &json, &length) == UD_END && !json);
+        CHECK(ud_catalog_get_confirmed(c, &key, &json, &length) == UD_END && !json && !length);
         const char *package = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
                               "\"constraints\":[]},\"dataFlows\":[]}";
         OK(ud_catalog_put(c, &key, str(package)));
@@ -43,7 +44,16 @@ int main(int argc, char **argv) {
         ud_free(json);
         json = NULL;
         key.revision = 2;
-        OK(ud_catalog_put(c, &key, str(package)));
+        const char *newer = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"test\",\"parameters\":{},"
+                            "\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
+        OK(ud_catalog_put(c, &key, str(newer)));
+        key.revision = 0;
+        CHECK(ud_catalog_get(c, &key, &json, &length) == UD_INVALID && !json);
+        OK(ud_catalog_get_confirmed(c, &key, &json, &length));
+        CHECK(length == strlen(newer) && !strcmp(json, newer));
+        ud_free(json);
+        json = NULL;
+        key.revision = 2;
         key.id = str("other");
         CHECK(ud_catalog_put(c, &key, str(package)) == UD_SCHEMA);
         key.id = str("test");
@@ -87,6 +97,7 @@ int main(int argc, char **argv) {
         json = NULL;
         permitted = 0;
         CHECK(ud_catalog_get(c, &key, &json, &length) == UD_AUTH && !json);
+        CHECK(ud_catalog_get_confirmed(c, &key, &json, &length) == UD_AUTH && !json);
         CHECK(ud_catalog_put(c, &key, str(package)) == UD_AUTH);
         CHECK(ud_catalog_list(c, UD_CATALOG_PACKAGE, &json, &length) == UD_AUTH && !json);
         permitted = 1;

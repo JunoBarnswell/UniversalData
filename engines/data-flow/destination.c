@@ -242,22 +242,45 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
     return s;
 }
 
-ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input, const ud_batch *before) {
+static ud_status event_receipt_position(const builtin *sink, const ud_batch *record, char out[65]) {
+    ud_bytes proof = {.ctx = sink->context.memory};
+    ud_status status = ud_bytes_put(&proof, sink->context.activation->event_receipt_binding, 32);
+    if (!status)
+        status = ud_encode_batch(&proof, record);
+    if (!status) {
+        uint8_t digest[32];
+        ud_hash(proof.data, proof.size, digest);
+        for (size_t index = 0; index < sizeof(digest); index++)
+            snprintf(out + index * 2, 3, "%02x", digest[index]);
+    }
+    ud_bytes_clear(&proof);
+    return status;
+}
+
+static ud_status write_mapped(builtin *b, const ud_batch *record, const ud_batch *input,
+                              const ud_batch *before) {
     if (!input->rows)
         return UD_OK;
     ud_string table = {0};
     UD_TRY(ud_json_string(ud_member(b->config, "table"), &table));
-    char id[32], position[96];
-    snprintf(id, sizeof(id), "%llu", (unsigned long long)b->number);
+    char id[33], position[96];
     ud_row_info last = {0};
-    if (input->rows)
-        UD_TRY(ud_batch_row_info(input, input->rows - 1, &last));
-    if (last.id.high || last.id.low) {
-        char row_id[33];
-        ud_id_format(last.id, row_id);
-        snprintf(position, sizeof(position), "row:%s/count:%u", row_id, input->rows);
-    } else
-        snprintf(position, sizeof(position), "batch:%llu", (unsigned long long)b->number);
+    UD_TRY(ud_batch_row_info(input, input->rows - 1, &last));
+    if (b->context.activation->event_receipt_binding) {
+        if (input->rows != 1 || record->rows != 1 || (!last.id.high && !last.id.low))
+            return UD_CORRUPT;
+        ud_id_format(last.id, id);
+        /* Prove the full input before the target mapping drops any fields. */
+        UD_TRY(event_receipt_position(b, record, position));
+    } else {
+        snprintf(id, sizeof(id), "%llu", (unsigned long long)b->number);
+        if (last.id.high || last.id.low) {
+            char row_id[33];
+            ud_id_format(last.id, row_id);
+            snprintf(position, sizeof(position), "row:%s/count:%u", row_id, input->rows);
+        } else
+            snprintf(position, sizeof(position), "batch:%llu", (unsigned long long)b->number);
+    }
     ud_write_options o = {sizeof(o),
                           UD_ABI_VERSION,
                           b->mode,
@@ -308,35 +331,47 @@ static int record_failure(ud_status status) {
     return status == UD_PARSE || status == UD_OVERFLOW || status == UD_TRUNCATED ||
            status == UD_QUALITY;
 }
-static ud_status mapped_write(builtin *b, const ud_batch *input) {
+ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input) {
     ud_batch *mapped = NULL, *before = NULL;
     ud_string previous = {0};
-    ud_status status = ud_connection_lease_record_diagnostic(b->lease, &previous);
+    ud_status status = b->kind == SQL_SINK ? ud_connection_lease_record_diagnostic(b->lease, &previous)
+                                          : UD_OK;
     ud_free((void *)previous.data);
     if (!status)
         status = ud_builtin_sink_batch(b, input, &mapped, &before);
     if (!status)
-        status = ud_builtin_sink_write(b, mapped, before);
+        status = write_mapped(b, input, mapped, before);
     ud_batch_destroy(mapped);
     ud_batch_destroy(before);
     return status;
 }
 ud_status ud_builtin_sink_records(builtin *b, const ud_batch *input) {
+    if (b->context.activation->event_receipt_binding) {
+        ud_status status = UD_OK;
+        for (uint32_t row = 0; !status && row < input->rows; row++) {
+            ud_batch *record = NULL;
+            status = ud_batch_slice(b->context.memory, input, row, 1, &record);
+            if (!status)
+                status = ud_builtin_sink_write(b, record);
+            ud_batch_destroy(record);
+        }
+        return status;
+    }
     int policy;
     UD_TRY(ud_error_policy(b->config, "errorPolicy", UD_ERROR_FAIL, &policy));
     if (policy == UD_ERROR_FAIL)
-        return mapped_write(b, input);
+        return ud_builtin_sink_write(b, input);
     for (uint32_t row = 0; row < input->rows; row++) {
         ud_row_info info;
         UD_TRY(ud_batch_row_info(input, row, &info));
         if (info.operation == UD_CHANGE_TRUNCATE)
-            return mapped_write(b, input); /* A table reset has no rejected-record boundary. */
+            return ud_builtin_sink_write(b, input); /* A table reset has no rejected-record boundary. */
     }
     if (!ud_transaction_active(b->context.activation))
         return UD_UNSUPPORTED;
     ud_string savepoint = {"ud_record_batch", 15};
     UD_TRY(ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_BEGIN));
-    ud_status status = mapped_write(b, input);
+    ud_status status = ud_builtin_sink_write(b, input);
     if (!status)
         return ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_RELEASE);
     if (!record_failure(status))
@@ -357,7 +392,7 @@ ud_status ud_builtin_sink_records(builtin *b, const ud_batch *input) {
             status = ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_BEGIN);
         int load = b->load_mode;
         b->load_mode = UD_LOAD_PARAMETERS; /* Isolation retries use driver parameter binding. */
-        ud_status written = !status ? mapped_write(b, record) : status;
+        ud_status written = !status ? ud_builtin_sink_write(b, record) : status;
         b->load_mode = load;
         ud_batch_destroy(record);
         if (status)

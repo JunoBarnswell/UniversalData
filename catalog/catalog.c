@@ -22,25 +22,31 @@ static ud_status grant(ud_catalog *c, int action) {
                ? UD_OK
                : UD_AUTH;
 }
-static ud_status key_check(const ud_catalog_key *key) {
+static ud_status key_address_check(const ud_catalog_key *key) {
     if (!key)
         return UD_INVALID;
     if (key->struct_size != sizeof(*key) || key->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    return kind_valid(key->kind) && string_valid(key->id, 1) && key->id.length <= 255 &&
-                   key->revision
+    return kind_valid(key->kind) && string_valid(key->id, 1) && key->id.length <= 255
                ? UD_OK
                : UD_INVALID;
+}
+static ud_status key_check(const ud_catalog_key *key) {
+    UD_TRY(key_address_check(key));
+    return key->revision ? UD_OK : UD_INVALID;
 }
 static void revision_text(uint64_t revision, char out[21]) {
     snprintf(out, 21, "%020llu", (unsigned long long)revision);
 }
-static ud_status bind_key(ud_catalog *c, catalog_statement *s, const ud_catalog_key *key) {
-    char revision[21];
-    revision_text(key->revision, revision);
+static ud_status bind_address(ud_catalog *c, catalog_statement *s, const ud_catalog_key *key) {
     UD_TRY(catalog_text(s, 1, c->options.tenant));
     UD_TRY(catalog_int(s, 2, key->kind));
-    UD_TRY(catalog_text(s, 3, key->id));
+    return catalog_text(s, 3, key->id);
+}
+static ud_status bind_key(ud_catalog *c, catalog_statement *s, const ud_catalog_key *key) {
+    UD_TRY(bind_address(c, s, key));
+    char revision[21];
+    revision_text(key->revision, revision);
     return catalog_text(s, 4, (ud_string){revision, 20});
 }
 static ud_status digest_document_version(ud_catalog *c, const ud_catalog_key *key, ud_string json,
@@ -112,15 +118,33 @@ static ud_status pragma_integer(ud_catalog *c, const char *query, int *value) {
     catalog_statement *s = NULL;
     ud_status status = catalog_prepare(c, query, &s);
     if (!status) {
-        ud_status rc = catalog_step(s);
-        status = rc == UD_OK ? UD_OK : rc;
-        if (!status && rc != UD_OK)
-            status = UD_CORRUPT;
+        status = catalog_step(s);
+        if (status == UD_END)
+            status = UD_UNSUPPORTED;
         if (!status)
             *value = catalog_column_int(s, 0);
     }
     catalog_finalize(s);
     return status;
+}
+static ud_status confirm_sqlite_configuration(ud_catalog *catalog) {
+    catalog_statement *statement = NULL;
+    ud_status status = catalog_prepare(catalog, "PRAGMA journal_mode=WAL", &statement);
+    if (!status)
+        status = catalog_step(statement);
+    if (!status) {
+        const char *mode = catalog_column_text(statement, 0);
+        if (!mode || strcmp(mode, "wal"))
+            status = UD_UNSUPPORTED;
+    }
+    catalog_finalize(statement);
+    if (status == UD_END)
+        status = UD_UNSUPPORTED;
+    UD_TRY(status);
+    int synchronous = 0, foreign_keys = 0;
+    UD_TRY(pragma_integer(catalog, "PRAGMA synchronous", &synchronous));
+    UD_TRY(pragma_integer(catalog, "PRAGMA foreign_keys", &foreign_keys));
+    return synchronous >= 2 && foreign_keys == 1 ? UD_OK : UD_UNSUPPORTED;
 }
 static ud_status normalize(ud_catalog *c, const ud_catalog_key *key, ud_string input, char **json,
                            uint32_t *length) {
@@ -164,6 +188,9 @@ static ud_status open_sqlite(ud_catalog *c) {
     ud_free(file);
     if (!status)
         status = catalog_sqlite_status(sqlite3_busy_timeout(c->database, 5000));
+    if (!status)
+        status = ud_catalog_sql(c, "PRAGMA synchronous=FULL;PRAGMA foreign_keys=ON;"
+                                   "PRAGMA trusted_schema=OFF");
     int application = 0, version = 0;
     if (!status)
         status = pragma_integer(c, "PRAGMA application_id", &application);
@@ -177,6 +204,7 @@ static ud_status open_sqlite(ud_catalog *c) {
         status = UD_INCOMPATIBLE;
     if (!status && !application) {
         status = ud_catalog_sql(c, "BEGIN IMMEDIATE");
+        int transaction = !status;
         /* A competing first opener may have initialized the file while this
          * handle waited or between the two autocommit PRAGMA reads. Only
          * retry the initially unclaimed header under the writer lock. */
@@ -212,10 +240,8 @@ static ud_status open_sqlite(ud_catalog *c) {
                 "documents(tenant,kind,(document ->> 'componentId'),timestamp_ms,id,"
                 "revision);"
                 "PRAGMA application_id=1430537025;PRAGMA user_version=" UD_PROTOCOL_VERSION_TEXT);
-        if (!status)
-            status = ud_catalog_sql(c, "COMMIT");
-        else
-            (void)ud_catalog_sql(c, "ROLLBACK");
+        if (transaction)
+            status = ud_catalog_finish(c, status);
     }
     if (!status && version != CATALOG_STORAGE_VERSION) {
         status = ud_catalog_sql(c, "BEGIN IMMEDIATE");
@@ -254,14 +280,11 @@ static ud_status open_sqlite(ud_catalog *c) {
             snprintf(version_sql,sizeof(version_sql),"PRAGMA user_version=%u",CATALOG_STORAGE_VERSION);
             status=ud_catalog_sql(c,version_sql);
         }
-        if (!status)
-            status = ud_catalog_sql(c, "COMMIT");
-        if (transaction && status)
-            (void)ud_catalog_sql(c, "ROLLBACK");
+        if (transaction)
+            status = ud_catalog_finish(c, status);
     }
     if (!status)
-        status = ud_catalog_sql(c, "PRAGMA journal_mode=WAL;PRAGMA synchronous=FULL;PRAGMA "
-                        "foreign_keys=ON;PRAGMA trusted_schema=OFF");
+        status = confirm_sqlite_configuration(c);
     return status;
 }
 static ud_status open_catalog(ud_context *ctx, const ud_catalog_options *o, ud_string connection, ud_catalog **out) {
@@ -327,14 +350,16 @@ static ud_status get_document(ud_catalog *c, const ud_catalog_key *key, char **j
         return UD_INVALID;
     *json = NULL;
     *length = 0;
-    UD_TRY(key_check(key));
+    UD_TRY(key_address_check(key));
     catalog_statement *s = NULL;
-    ud_status status = catalog_prepare(c,
-                               "SELECT id,revision,document,digest,timestamp_ms FROM documents "
-                               "WHERE tenant=?1 AND kind=?2 AND id=?3 AND revision=?4",
-                               &s);
+    const char *query = key->revision
+        ? "SELECT id,revision,document,digest,timestamp_ms FROM documents "
+          "WHERE tenant=?1 AND kind=?2 AND id=?3 AND revision=?4"
+        : "SELECT id,revision,document,digest,timestamp_ms FROM documents "
+          "WHERE tenant=?1 AND kind=?2 AND id=?3 ORDER BY revision DESC LIMIT 1";
+    ud_status status = catalog_prepare(c, query, &s);
     if (!status)
-        status = bind_key(c, s, key);
+        status = key->revision ? bind_key(c, s, key) : bind_address(c, s, key);
     if (!status) {
         ud_status rc = catalog_step(s);
         if (rc == UD_END)
@@ -345,7 +370,8 @@ static ud_status get_document(ud_catalog *c, const ud_catalog_key *key, char **j
             ud_catalog_key actual;
             ud_string document;
             status = row_check(c, s, key->kind, &actual, &document);
-            if (!status && (actual.revision != key->revision || !ud_same(actual.id, key->id)))
+            if (!status && ((key->revision && actual.revision != key->revision) ||
+                            !ud_same(actual.id, key->id)))
                 status = UD_CORRUPT;
             if (!status) {
                 *json = ud_strdup_n(c->ctx, document.data, document.length);
@@ -365,10 +391,26 @@ ud_status ud_catalog_get(ud_catalog *c, const ud_catalog_key *key, char **json, 
     *json = NULL;
     *length = 0;
     UD_TRY(grant(c, UD_ACCESS_READ));
+    UD_TRY(key_check(key));
     return get_document(c, key, json, length);
+}
+ud_status ud_catalog_get_confirmed(ud_catalog *catalog, const ud_catalog_key *key, char **json,
+                                  uint32_t *length) {
+    if (!catalog || !json || !length)
+        return UD_INVALID;
+    *json = NULL;
+    *length = 0;
+    UD_TRY(grant(catalog, UD_ACCESS_READ));
+    UD_TRY(key_address_check(key));
+    if (!catalog->remote)
+        return get_document(catalog, key, json, length);
+    UD_TRY(ud_catalog_begin(catalog, 0));
+    ud_status status = get_document(catalog, key, json, length);
+    return ud_catalog_finish_confirmation(catalog, status, json, length);
 }
 static ud_status lease_guard(ud_catalog *,const ud_catalog_lease *,int32_t,ud_string);
 static ud_status lease_check(const ud_catalog_lease *);
+static ud_status lease_end(ud_catalog *, ud_status);
 
 static ud_status update_run_head(ud_catalog *catalog, const ud_catalog_key *key) {
     if (key->kind != UD_CATALOG_AUDIT || key->id.length < 5 || memcmp(key->id.data,"run/",4))
@@ -473,13 +515,7 @@ ud_status ud_catalog_append_document(ud_catalog *c, const ud_catalog_key *key, u
     if (transaction) {
         /* A rejected fencing check has not appended data. Persist its clock
          * observation so a later wall-clock correction cannot revive expiry. */
-        if (!status || status == UD_FENCED) {
-            ud_status committed = ud_catalog_sql(c,"COMMIT");
-            if (committed) status = committed;
-            else transaction = 0;
-        }
-        if (transaction)
-            (void)ud_catalog_sql(c, "ROLLBACK");
+        status = status == UD_FENCED ? lease_end(c, status) : ud_catalog_finish(c, status);
     }
     ud_free(previous);
     ud_free(json);
@@ -861,11 +897,8 @@ ud_status ud_catalog_prune_events(ud_catalog *catalog, uint64_t before_ms, uint3
         status = catalog_execute(statement);
     uint64_t changed = !status ? catalog->changed : 0;
     catalog_finalize(statement);
+    status = ud_catalog_finish(catalog, status);
     if (!status)
-        status = ud_catalog_sql(catalog, "COMMIT");
-    if (status)
-        (void)ud_catalog_sql(catalog, "ROLLBACK");
-    else
         *removed = changed;
     return status;
 }
@@ -923,8 +956,7 @@ ud_status ud_catalog_protect_parameters(ud_catalog *catalog, const ud_catalog_ke
     if (!status && parameters) status = catalog_blob(statement,6,digest,32);
     if (!status && parameters) status = catalog_execute(statement);
     catalog_finalize(statement);
-    if (!status) status = ud_catalog_sql(catalog,"COMMIT");
-    if (status) (void)ud_catalog_sql(catalog,"ROLLBACK");
+    status = ud_catalog_finish(catalog, status);
     ud_free(original); ud_json_destroy(document); ud_bytes_clear(&bytes);
     return status;
 }
@@ -1027,9 +1059,12 @@ ud_status ud_catalog_begin(ud_catalog *catalog, int election) {
         return ud_catalog_sql(catalog, "BEGIN IMMEDIATE");
     if (!election && !catalog->leader_generation)
         return UD_FENCED;
-    UD_TRY(ud_catalog_sql(catalog, "BEGIN"));
+#ifdef UD_WITH_POSTGRESQL_CATALOG
+    UD_TRY(catalog_postgresql_begin(catalog, "BEGIN"));
     uint64_t now = 0;
-    ud_status status = lease_clock(catalog, &now);
+    ud_status status = catalog_postgresql_admit(catalog);
+    if (!status)
+        status = lease_clock(catalog, &now);
     catalog_statement *statement = NULL;
     if (!status && !election) {
         status = catalog_prepare(catalog,
@@ -1040,18 +1075,40 @@ ud_status ud_catalog_begin(ud_catalog *catalog, int election) {
         if (!status) status = catalog_int(statement, 2, (int64_t)catalog->leader_generation);
         if (!status) status = catalog_int(statement, 3, (int64_t)now);
         if (!status) status = catalog_step(statement);
-        if (status == UD_END) status = UD_FENCED;
     }
     catalog_finalize(statement);
-    if (status)
-        (void)ud_catalog_sql(catalog, "ROLLBACK");
-    return status;
+    if (status == UD_END)
+        return lease_end(catalog, UD_FENCED);
+    return status ? ud_catalog_finish(catalog, status) : UD_OK;
+#else
+    return UD_UNSUPPORTED;
+#endif
 }
 
 ud_status ud_catalog_finish(ud_catalog *catalog, ud_status status) {
-    if (!status) status = ud_catalog_sql(catalog, "COMMIT");
+#ifdef UD_WITH_POSTGRESQL_CATALOG
+    if (catalog->remote)
+        return catalog_postgresql_finish(catalog, status);
+#endif
+    if (!status) {
+        status = ud_catalog_sql(catalog, "COMMIT");
+        if (status == UD_IO)
+            status = UD_COMMIT_UNKNOWN;
+    }
     if (status) (void)ud_catalog_sql(catalog, "ROLLBACK");
     return status;
+}
+
+ud_status ud_catalog_finish_confirmation(ud_catalog *catalog, ud_status observed, char **json,
+                                         uint32_t *length) {
+    ud_status status = ud_catalog_finish(catalog,
+        observed == UD_END || observed == UD_FENCED ? UD_OK : observed);
+    if (!status)
+        return observed;
+    ud_free(*json);
+    *json = NULL;
+    *length = 0;
+    return status == UD_COMMIT_UNKNOWN ? UD_TRANSIENT : status;
 }
 
 ud_status ud_catalog_put_leased(ud_catalog *catalog, const ud_catalog_key *key,
@@ -1068,13 +1125,8 @@ ud_status ud_catalog_put_leased(ud_catalog *catalog, const ud_catalog_key *key,
 }
 
 static ud_status lease_end(ud_catalog *c,ud_status status) {
-    if (!status || status==UD_FENCED || status==UD_BUSY) {
-        ud_status committed=ud_catalog_sql(c,"COMMIT");
-        if (!committed) return status;
-        status=committed;
-    }
-    (void)ud_catalog_sql(c,"ROLLBACK");
-    return status;
+    ud_status confirmed = ud_catalog_finish(c, status == UD_FENCED || status == UD_BUSY ? UD_OK : status);
+    return confirmed ? confirmed : status;
 }
 ud_status ud_catalog_lease_acquire(ud_catalog *c,const ud_catalog_lease_request *request,
                                    uint64_t *generation,uint64_t *until) {
@@ -1251,9 +1303,16 @@ ud_status ud_catalog_copy_snapshot(ud_catalog *source, ud_catalog *target, int32
     }
     catalog_finalize(active);
     if (!status && target) {
-        status = imports ? ud_catalog_begin(target,0) :
-            ud_catalog_sql(target,"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+#ifdef UD_WITH_POSTGRESQL_CATALOG
+        status = imports ? ud_catalog_begin(target, 0) : catalog_postgresql_begin(target,
+            "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
         target_open = !status;
+        /* Offline snapshot transfer uses a deadline for each I/O and final
+         * commit, so its duration can scale with the number of documents. */
+        target->postgresql_deadline = 0;
+#else
+        status = UD_UNSUPPORTED;
+#endif
     }
     catalog_statement *records = NULL;
     if (!status) status = catalog_prepare(source,

@@ -27,10 +27,16 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    public readonly code?: number,
   ) {
     super(message);
   }
 }
+export const commitUnknown = (error: unknown): boolean =>
+  error instanceof ApiError
+    ? error.code === 16 || error.status === 502 || error.status === 504
+    : error instanceof TypeError || error instanceof SyntaxError;
+
 export async function request(
   path: string,
   options: RequestInit = {},
@@ -47,8 +53,10 @@ export async function request(
   if (!response.ok) {
     const text = await response.text();
     let message = `请求失败 (${response.status})`;
+    let code: number | undefined;
     try {
-      const error = decode(text) as { error?: string | { message: string } };
+      const error = decode(text) as { code?: number; error?: string | { message: string } };
+      code = error.code;
       message = typeof error.error === "string" ? error.error : error.error?.message ?? message;
     } catch {
       /* Preserve HTTP status. */
@@ -58,6 +66,7 @@ export async function request(
     throw new ApiError(
       response.status === 401 ? "账户或密码无效，或会话已失效" : message,
       response.status,
+      code,
     );
   }
   return response;

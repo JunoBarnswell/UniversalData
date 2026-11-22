@@ -1,5 +1,5 @@
 import { Input, Select } from "../../shared/design-system/Controls";
-import type { DataFlow, DataFlowParallelism } from "../../model";
+import { transactionLabel, type BoundPipeline, type DataFlow, type DataFlowParallelism } from "../../model";
 
 const limits: { key: keyof DataFlowParallelism; label: string }[] = [
   { key: "workerProcesses", label: "Worker 进程数" },
@@ -8,9 +8,10 @@ const limits: { key: keyof DataFlowParallelism; label: string }[] = [
 ];
 
 export function DataFlowSettings({
-  graph, change,
+  graph, bound, change,
 }: {
   graph: DataFlow;
+  bound?: BoundPipeline;
   change: (settings: Partial<Pick<DataFlow, "parallelism" | "delivery">>) => void;
 }) {
   const { parallelism, delivery } = graph;
@@ -45,13 +46,16 @@ export function DataFlowSettings({
         <legend>投递</legend>
         <label>
           投递模式
-          <Select value={delivery?.mode ?? "atLeastOnce"} onChange={(event) => change({
-            delivery: event.target.value === "kafkaTransaction"
-              ? { mode: "kafkaTransaction", checkpointTopic: "", checkpointPartition: 0 }
-              : { mode: "atLeastOnce" },
-          })}>
+          <Select value={delivery?.mode ?? "atLeastOnce"} onChange={(event) => {
+            const mode = event.target.value;
+            if (mode === "kafkaTransaction")
+              change({ delivery: { mode, checkpointTopic: "", checkpointPartition: 0 } });
+            else if (mode === "eventReceipt" || mode === "atLeastOnce")
+              change({ delivery: { mode } });
+          }}>
             <option value="atLeastOnce">至少一次</option>
             <option value="kafkaTransaction">Kafka 事务</option>
+            <option value="eventReceipt">RabbitMQ 到 SQL 消息回执</option>
           </Select>
         </label>
         {transaction ? (
@@ -71,6 +75,17 @@ export function DataFlowSettings({
             </label>
             <p className="property-help">源、目标与检查点使用同一个 Kafka 连接。检查点主题须独立于业务主题。并行实例仅支持无状态流，每个实例使用一个检查点分区。</p>
           </>
+        ) : null}
+        {delivery?.mode === "eventReceipt" ? (
+          <p className="property-help">
+            一条 RabbitMQ 队列直接连到一个支持回执的 SQL 目标。关闭消息元数据和流并行，生产者须提供不可变消息 ID。
+          </p>
+        ) : null}
+        {bound?.deliveryMode === "eventReceipt" ? (
+          <p className="property-help">Native 已绑定逐消息 SQL 回执，目标提交之后才确认消费。</p>
+        ) : null}
+        {bound?.transaction ? (
+          <p className="property-help">Native 事务声明 · {transactionLabel(bound.transaction)}</p>
         ) : null}
       </fieldset>
     </details>

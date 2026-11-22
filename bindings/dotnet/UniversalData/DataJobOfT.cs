@@ -1,3 +1,4 @@
+using System.Data;
 using System.Linq.Expressions;
 using System.Text.Json;
 
@@ -177,9 +178,30 @@ public sealed class DataJob<TInput> : DataJob
         return this;
     }
 
+    /// <summary>Require the selected isolation on every declared SQL participant.</summary>
+    public DataJob<TInput> Transaction(IsolationLevel isolation, params string[] participants)
+    {
+        Graph.Transaction(participants, isolation switch
+        {
+            IsolationLevel.ReadCommitted => "readCommitted",
+            IsolationLevel.RepeatableRead => "repeatableRead",
+            IsolationLevel.Serializable => "serializable",
+            _ => throw new ArgumentOutOfRangeException(nameof(isolation))
+        });
+        return this;
+    }
+
     public DataJob<TInput> KafkaTransaction(string checkpointTopic, uint checkpointPartition = 0)
     {
-        Graph.KafkaTransaction(checkpointTopic, checkpointPartition);
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkpointTopic);
+        Graph.Delivery(new { mode = "kafkaTransaction", checkpointTopic, checkpointPartition });
+        return this;
+    }
+
+    /// <summary>Require one atomic SQL receipt and write per RabbitMQ message in the current flow.</summary>
+    public DataJob<TInput> EventReceipt()
+    {
+        Graph.Delivery(new { mode = "eventReceipt" });
         return this;
     }
 

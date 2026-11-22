@@ -343,6 +343,8 @@ ud_status ud_journal_write_blob(ud_journal *journal, const void *data, uint64_t 
                      ? ud_journal_read_blob(journal, (ud_string){digest, 64}, length, &existing)
                      : UD_CORRUPT;
         ud_bytes_clear(&existing);
+        if (!status)
+            status = ud_confirm_file(journal->ctx, path);
     } else if (!status) {
         ud_bytes bytes = {.data = (uint8_t *)data, .size = (size_t)length};
         status = publish_bytes(journal, path, &bytes, 0);
@@ -744,6 +746,10 @@ static ud_status replay_segment(ud_journal *journal, const char *name, uint64_t 
             bytes.pos += (size_t)length;
         }
     }
+    /* A crash or a sync error can leave a complete frame readable from the
+     * page cache. Prove its bytes before it contributes to the new tail. */
+    if (!status && ud_sync_file(journal->ctx, path))
+        status = UD_COMMIT_UNKNOWN;
     if (!status) {
         ud_free(journal->segment);
         journal->segment = path;
@@ -767,15 +773,26 @@ ud_status ud_journal_open(ud_context *ctx, ud_string directory, int resume, ud_j
         return UD_RESOURCE;
     journal->ctx = ctx;
     journal->directory = ud_strdup_n(ctx, directory.data, directory.length);
-    ud_status status = journal->directory ? ud_mkdir(ctx, journal->directory) : UD_RESOURCE;
+    ud_status status = journal->directory ? ud_path_no_symlinks(ctx, journal->directory) : UD_RESOURCE;
+    int kind = 0;
     if (!status)
-        status = ud_path_no_symlinks(ctx, journal->directory);
+        status = ud_path_kind(ctx, journal->directory, &kind);
+    if (!status && !kind) {
+        if (resume)
+            status = ud_fail(ctx, UD_COMMIT_UNKNOWN, "original Journal directory is unavailable");
+        else {
+            status = ud_mkdir(ctx, journal->directory);
+            if (!status)
+                status = ud_sync_parent(ctx, journal->directory);
+        }
+    }
+    if (!status && kind && kind != 2)
+        status = UD_INVALID;
     char *path = NULL;
     if (!status)
         status = ud_join_path(ctx, journal->directory, "writer.lock", &path);
     if (!status)
         status = ud_lock(ctx, path, &journal->writer);
-    ud_free(path);
     char **names = NULL;
     uint32_t count = 0;
     if (!status)
@@ -788,6 +805,12 @@ ud_status ud_journal_open(ud_context *ctx, ud_string directory, int resume, ud_j
     int head = 0;
     if (!status)
         status = read_head(journal, &head);
+    if (!status)
+        status = ud_list(ctx, journal->directory, ".udg", &names, &count);
+    if (!status && !resume && (head || count))
+        status = UD_BUSY;
+    if (!status && resume && !head && !count)
+        status = ud_fail(ctx, UD_CORRUPT, "original Journal records are unavailable");
     if (!status && resume) {
         status = read_tail(journal, &journal->acknowledged, journal->acknowledged_hash);
         if (!status && journal->acknowledged < journal->sequence)
@@ -799,10 +822,6 @@ ud_status ud_journal_open(ud_context *ctx, ud_string directory, int resume, ud_j
                 journal->acknowledged_seen = 1;
         }
     }
-    if (!status)
-        status = ud_list(ctx, journal->directory, ".udg", &names, &count);
-    if (!status && ((!resume && (head || count)) || (resume && !head && !count)))
-        status = resume ? UD_CORRUPT : UD_BUSY;
     journal->metrics.segment_files = count;
     for (uint32_t i = 0; !status && i < count; i++) {
         unsigned long long first = 0;
@@ -823,6 +842,12 @@ ud_status ud_journal_open(ud_context *ctx, ud_string directory, int resume, ud_j
     ud_list_free(names, count);
     if (!status && resume && !journal->acknowledged_seen)
         status = UD_CORRUPT;
+    /* Anchor the verified chain with a fresh durable tail under the writer
+     * lock. External recovery may act on the reconstructed decisions then. */
+    if (!status && resume && (ud_sync_parent(ctx, path) ||
+                              publish_tail(journal, journal->sequence, journal->previous)))
+        status = UD_COMMIT_UNKNOWN;
+    ud_free(path);
     if (status)
         ud_journal_close(journal);
     else

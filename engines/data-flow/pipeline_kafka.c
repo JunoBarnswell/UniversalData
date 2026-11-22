@@ -26,11 +26,8 @@ int ud_pipeline_kafka_terminal_pending(const physical_plan *plan) {
     return 0;
 }
 
-ud_status ud_pipeline_kafka_bind(physical_plan *plan, const ud_json *definition) {
-    const ud_json *delivery = ud_member(definition, "delivery");
+ud_status ud_pipeline_kafka_bind(physical_plan *plan, const ud_json *delivery) {
     int assigned = plan->execution->execution->assignment_count != 0;
-    if (!delivery)
-        return assigned ? UD_UNSUPPORTED : UD_OK;
     static const char *keys[] = {"mode", "checkpointTopic", "checkpointPartition", "kafkaStage", "kafkaMerge"};
     UD_TRY(ud_json_keys(delivery, keys, 5));
     const ud_json *stage = ud_member(delivery, "kafkaStage");
@@ -40,14 +37,7 @@ ud_status ud_pipeline_kafka_bind(physical_plan *plan, const ud_json *definition)
     if (assigned && stage) return UD_UNSUPPORTED;
     plan->kafka_stage = stage != NULL;
     plan->kafka_merge = ud_member(delivery, "kafkaMerge") != NULL;
-    ud_string mode;
-    UD_TRY(ud_json_string(ud_member(delivery, "mode"), &mode));
-    if (ud_named(mode, "atLeastOnce"))
-        return assigned || ud_member(delivery, "checkpointTopic") || ud_member(delivery, "checkpointPartition") || stage
-                   ? UD_SCHEMA : UD_OK;
-    if (!ud_named(mode, "kafkaTransaction"))
-        return UD_SCHEMA;
-    if (plan->execution->transaction_serial || plan->execution->execution->preview_pipeline)
+    if (plan->execution->transaction_isolation || plan->execution->execution->preview_pipeline)
         return UD_UNSUPPORTED;
     UD_TRY(ud_json_string(ud_member(delivery, "checkpointTopic"), &plan->kafka_topic));
     if (!plan->kafka_topic.length)

@@ -210,6 +210,13 @@ static int journal(const char *directory,int mode) {
         CHECK(!store && !ud_memory_used(ctx));OK(ud_context_destroy(ctx));return 0;
     }
     OK(s);
+    if (mode == 3) {
+        CHECK(ud_journal_find(store, 3, text("done")));
+        ud_journal_close(store);
+        CHECK(!ud_memory_used(ctx));
+        OK(ud_context_destroy(ctx));
+        return 0;
+    }
     if(mode==0) {
         ud_journal *other=NULL;CHECK(ud_journal_open(ctx,text(directory),1,&other)==UD_BUSY && !other);
         for(uint32_t group=0;group<512;group++) {
@@ -328,5 +335,6 @@ int main(int argc,char **argv) {
     if(!strcmp(argv[1],"journal"))return journal(argv[2],0);
     if(!strcmp(argv[1],"journal-read"))return journal(argv[2],1);
     if(!strcmp(argv[1],"journal-corrupt"))return journal(argv[2],2);
+    if(!strcmp(argv[1],"journal-confirm"))return journal(argv[2],3);
     return 2;
 }

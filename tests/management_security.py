@@ -85,10 +85,23 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         assert request('admin-b', '/packages/protected-package/versions/1')[0] == 404
         assert request('reader-a', '/executions', 'POST', {'packageId': 'protected-package', 'packageRevision': '1'})[0] == 403
         assert request('reader-a', '/scripts/compile', 'POST', {'source': 'invalid'})[0] == 403
+        assert request('reader-a', '/execution-readiness')[0] == 403
+        status, readiness = request('admin-a', '/execution-readiness?packageId=protected-package&packageRevision=1')
+        assert status == 200 and readiness['eligibleNodes'] >= 1 and readiness['requestedProcesses'] == 1, readiness
         secret = 'runtime-password-781394-sensitive'
-        status, run = request('admin-a', '/executions', 'POST', {'packageId': 'protected-package', 'packageRevision': '1', 'parameters': json.dumps({'password': secret})})
+        submission = {'packageId': 'protected-package', 'packageRevision': '1', 'requestId': 'protected-submission',
+            'parameters': json.dumps({'password': secret})}
+        status, run = request('admin-a', '/executions', 'POST', submission)
         assert status == 202 and secret not in json.dumps(run), (status, run)
         ticket = run['id']
+        lookup = '/executions/requests/' + submission['requestId']
+        status, receipt = request('admin-a', lookup)
+        assert status == 200 and receipt['id'] == ticket and secret not in json.dumps(receipt), (status, receipt)
+        assert request('admin-a', '/executions', 'POST', submission)[1]['id'] == ticket
+        assert request('admin-a', '/executions', 'POST', {**submission, 'parameters': '{"password":"different"}'})[0] == 409
+        assert request('peer-a', lookup)[0] == 404
+        assert request('admin-b', lookup)[0] == 404
+        assert request('reader-a', lookup)[0] == 403
         deadline = time.monotonic() + 25
         while True:
             status, state = request('admin-a', '/executions/' + ticket)

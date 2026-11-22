@@ -20,7 +20,7 @@
     "acceptanceResources": "The PRODUCT gate requires real PostgreSQL, MySQL/MariaDB, Kafka, Iceberg REST Catalog, S3 and Trino along with the existing external, Windows and installed-consumer fixtures.",
     "dataLayoutRevision": 1,
     "catalogRevision": 3,
-    "workerRevision": 11
+    "workerRevision": 12
   },
   "scope": {
     "name": "Studio 4 / SDK 12 candidate with .NET 10 IoC and one Native Package for each ETL path. Runtime evidence must match the candidate.",

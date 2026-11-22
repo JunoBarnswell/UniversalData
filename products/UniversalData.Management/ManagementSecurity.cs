@@ -58,7 +58,7 @@ public static class ManagementSecurity
         var identity = identities.Find(context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "",context.User.FindFirstValue("stamp"));
         return identity ?? throw new UniversalDataException((int)StatusCode.Auth,"Session is no longer valid");
     }
-    public static void Install(WebApplication app,HostPolicy policy,IdentityDirectory identities)
+    public static void Install(WebApplication app, HostPolicy policy, IdentityDirectory identities, ClusterLeadership leadership)
     {
         app.UseAuthentication(); app.UseAuthorization(); app.UseRateLimiter();
         app.Use(async (context,next) => {
@@ -71,14 +71,38 @@ public static class ManagementSecurity
                     context.Response.StatusCode = 403; await context.Response.WriteAsJsonAsync(new { error = "Invalid request verification token" }); return;
                 }
             }
-            try { await next(); }
+            bool completed = false;
+            try
+            {
+                await next();
+                completed = true;
+            }
+            catch (UniversalDataException error)
+            {
+                leadership.CatalogUnavailable(error);
+                throw;
+            }
             finally {
                 if (actor is { } identity && context.Request.Path.StartsWithSegments("/api") && mutation) {
-                    using var catalog = policy.Bind(HostIdentity.Operator(identity.Tenant)).OpenCatalog();
-                    string id = "operation/" + Guid.NewGuid().ToString("N");
-                    catalog.Put(CatalogKind.Audit,id,1,JsonSerializer.Serialize(new { version = ProductInfo.Protocol,id,subject = identity.Subject,tenant = identity.Tenant,
-                        method = context.Request.Method,route = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText,status = context.Response.StatusCode,
-                        timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() },HostPolicy.JsonOptions));
+                    try
+                    {
+                        using var catalog = policy.Bind(HostIdentity.Operator(identity.Tenant)).OpenCatalog();
+                        string id = "operation/" + Guid.NewGuid().ToString("N");
+                        catalog.Put(CatalogKind.Audit, id, 1, JsonSerializer.Serialize(new
+                        {
+                            version = ProductInfo.Protocol, id, subject = identity.Subject, tenant = identity.Tenant,
+                            method = context.Request.Method, route = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText,
+                            status = completed ? context.Response.StatusCode : (int?)null,
+                            timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                        }, HostPolicy.JsonOptions));
+                    }
+                    catch (UniversalDataException error)
+                    {
+                        // Audit is a separate observation. Its result cannot replace
+                        // the action's committed or unknown outcome.
+                        leadership.CatalogUnavailable(error);
+                        app.Logger.LogWarning("Management operation audit was not confirmed ({Status}).", error.Code);
+                    }
                 }
             }
         });

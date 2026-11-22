@@ -102,7 +102,6 @@ public sealed partial class TenantDispatcher
         var occurrenceId = request.OccurrenceId ?? "manual-" + OccurrenceId(jobId, request.RequestId);
         var key = OccurrenceKey(jobId, occurrenceId);
         using var catalog = policy.OpenCatalog();
-        long now = catalog.WorkerClock;
         if (ReadOccurrence(catalog, key, occurrenceId) is { RunId: not null } issued)
             return issued;
         lock (gate)
@@ -120,18 +119,17 @@ public sealed partial class TenantDispatcher
                     return previous;
                 if (request.OccurrenceId is not null && previous?.State != "Missed")
                     throw new ArgumentException("The selected occurrence was not missed");
-                var occurrence = previous ?? CreateOccurrence(job, occurrenceId, null, now);
+                var occurrence = previous ?? CreateOccurrence(job, occurrenceId, null, catalog.WorkerClock);
                 return PublishOccurrence(catalog, lease, job, occurrence, identity, null, "Queued");
             }
-            finally { ReleaseJobLease(catalog, lease); }
+            finally { ReleaseCatalogLease(catalog, lease); }
         }
     }
 
     private static JobOccurrence? ReadOccurrence(Catalog catalog, string key, string id)
     {
-        var revision = catalog.LatestRevision(CatalogKind.Audit, key);
-        return revision == 0 ? null : JsonSerializer.Deserialize<JobOccurrence>(
-            catalog.Get(CatalogKind.Audit, key, revision)!, HostPolicy.JsonOptions)! with { Id = id };
+        string? document = catalog.GetConfirmed(CatalogKind.Audit, key);
+        return document is null ? null : JsonSerializer.Deserialize<JobOccurrence>(document, HostPolicy.JsonOptions)! with { Id = id };
     }
 
     private void Schedule()
@@ -191,7 +189,7 @@ public sealed partial class TenantDispatcher
             {
                 // The next scheduler tick will use the current Catalog head.
             }
-            finally { ReleaseJobLease(catalog, lease); }
+            finally { ReleaseCatalogLease(catalog, lease); }
         }
     }
 
@@ -250,12 +248,6 @@ public sealed partial class TenantDispatcher
 
     private static string OccurrenceId(string job, string identity) => Convert.ToHexString(
         SHA256.HashData(Encoding.UTF8.GetBytes($"{job}/{identity}")).AsSpan(0,16)).ToLowerInvariant();
-
-    private static void ReleaseJobLease(Catalog catalog, CatalogLease lease)
-    {
-        try { catalog.ReleaseLease(lease); }
-        catch (UniversalDataException error) when (error.Code == StatusCode.Fenced) { }
-    }
 
     private static JobState ReadJob(JsonElement document)
     {

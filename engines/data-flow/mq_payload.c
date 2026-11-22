@@ -184,8 +184,8 @@ static ud_status append_with_metadata(const ud_message *message, ud_batch *batch
     return status;
 }
 
-ud_status ud_mq_decode(const ud_message *message, int format, ud_schema_registry *registry,
-                       ud_batch *batch, ud_id *column) {
+ud_status ud_mq_decode(const ud_message *message, int format, int strict,
+                       ud_schema_registry *registry, ud_batch *batch, ud_id *column) {
     uint32_t count = payload_columns(batch);
     ud_context *ctx = batch->ctx;
     ud_value *values = ud_alloc(ctx, (size_t)batch->columns * sizeof(*values));
@@ -202,6 +202,8 @@ ud_status ud_mq_decode(const ud_message *message, int format, ud_schema_registry
                                        : UD_QUALITY;
         if (!status && ud_json_kind(object) != UD_JSON_OBJECT)
             status = UD_SCHEMA;
+        if (!status && strict)
+            status = ud_json_known_members(object, batch->schema->fields, count);
         for (uint32_t i = 0; !status && i < count; i++) {
             const ud_field *f = batch->schema->fields + i;
             status = ud_json_value_decode(ctx, f, ud_json_find(object, f->name, f->name_length),

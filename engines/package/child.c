@@ -70,7 +70,7 @@ ud_status ud_child_package(ud_activation *e, const ud_json *config, int execute,
     child.depth = depth;
     child.parallel = e->parallel;
     child.transaction = e->transaction;
-    child.transaction_serial = e->transaction_serial;
+    child.transaction_isolation = e->transaction_isolation;
     child.transaction_epoch = e->transaction_epoch;
     child.transaction_participants = e->transaction_participants;
     atomic_init(&child.cancelled, 0);

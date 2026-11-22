@@ -10,6 +10,6 @@ public sealed record WorkerNodeCapacity(uint MaxCpu, uint MaxProcesses, ulong Ma
 }
 
 public sealed record WorkerNodeExecution(string MemberId, ulong Generation, string Lease, int ProcessId,
-    bool Started, ulong Produced);
+    bool Started, ulong Produced, bool CanAttach);
 
 public sealed record WorkerNodeHeartbeat(WorkerCapacityStatus Capacity, WorkerNodeExecution[] Executions);

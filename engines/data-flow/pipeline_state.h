@@ -59,7 +59,8 @@ typedef struct physical_plan {
     edge *edges;
     uint32_t count, paths, *order, *tree_order, tree_count, concurrency;
     execution_tree *trees;
-    ud_string id;
+    ud_string id, delivery_mode;
+    uint8_t event_receipt_binding[32];
     ud_work_group *group;
     atomic_uint_fast64_t confirmed_epoch;
     ud_mutex epoch_lock;
@@ -80,6 +81,7 @@ typedef struct physical_plan {
 ud_status ud_pipeline_plan_json(physical_plan *, ud_bytes *, int, ud_status);
 ud_status ud_pipeline_node_failed(node *, ud_status, const char *);
 ud_status ud_pipeline_validate_contract(physical_plan *);
+ud_status ud_pipeline_delivery_bind(physical_plan *, const ud_json *);
 int ud_pipeline_port_change(const node *, uint32_t);
 uint64_t ud_pipeline_input_mask(const physical_plan *, const node *, int);
 int ud_pipeline_epoch_target_supported(const physical_plan *, const node *);

@@ -19,22 +19,32 @@ public sealed class WorkerNodeDirectory(ClusterLeadership leadership)
         history.Values.Where(value => value.Node.AllowedTenants.Contains(tenant, StringComparer.Ordinal))
             .Select(value => (value.Node with { Capacity = value.Heartbeat?.Capacity }, value.State, value.HeartbeatMs));
 
-    internal bool Matches(RunState state)
+    internal bool Matches(RunState state) => MatchingRegistration(state) is not null;
+
+    private Registration? MatchingRegistration(RunState state)
     {
         if (state.Placement is not { Remote: true } placement || !registered.TryGetValue(placement.NodeId, out var node) ||
             node.State != "Online" || node.Boot != state.AgentBootId)
-            return false;
+            return null;
         return node.Heartbeat?.Executions.Any(execution => execution.MemberId == state.Id &&
             execution.Generation == state.TaskGeneration && execution.Lease == state.DispatchLeaseId &&
-            execution.ProcessId == state.ProcessId && execution.Produced >= state.ReportSequence) == true;
+            execution.ProcessId == state.ProcessId && execution.Produced >= state.ReportSequence &&
+            execution.CanAttach) == true ? node : null;
     }
 
+    internal bool JournalOwnerAvailable(RunState state) =>
+        state.Placement is { Remote: true } placement && state.HomeNodeId == placement.NodeId &&
+        registered.TryGetValue(placement.NodeId, out var registration) && registration.State == "Online" &&
+        (state.WorkerExitConfirmed || registration.Boot == state.AgentBootId) &&
+        registration.Heartbeat?.Executions.All(execution => execution.MemberId != state.Id) == true;
+
     public async Task<RemoteWorkerSession> StartAsync(WorkerPlacement placement, WorkerRequest request, string memberId,
-        ulong generation, CancellationToken cancellation)
+        ulong generation, CancellationToken cancellation, string? recoveryAgentBootId = null)
     {
-        var launch = WorkerNodeLaunch.From(request, placement.Budget);
+        var launch = WorkerNodeLaunch.From(request, placement.Budget, recoveryAgentBootId);
         if (!registered.TryGetValue(placement.NodeId, out var registration) ||
             registration.State != "Online" || !registration.Node.AllowedTenants.Contains(launch.Tenant, StringComparer.Ordinal) ||
+            recoveryAgentBootId is not null && registration.Boot != recoveryAgentBootId ||
             launch.Budget.CpuSlots > registration.Node.MaxCpu ||
             launch.Budget.ProcessMemoryBytes > registration.Node.MaxMemoryBytes)
             throw new IOException("Worker node is unavailable for this reservation");
@@ -45,9 +55,9 @@ public sealed class WorkerNodeDirectory(ClusterLeadership leadership)
 
     internal Task<RemoteWorkerSession> RecoverAsync(RunState state, CancellationToken cancellation)
     {
-        if (!Matches(state) || !registered.TryGetValue(state.Placement!.NodeId, out var registration))
+        var registration = MatchingRegistration(state) ??
             throw new IOException("Worker no longer reports the execution to be recovered");
-        var frame = new WorkerNodeFrame(ProductInfo.WorkerRevision,"recover",state.Placement.NodeId,state.Id,
+        var frame = new WorkerNodeFrame(ProductInfo.WorkerRevision,"recover",registration.Node.NodeId,state.Id,
             state.TaskGeneration,state.DispatchLeaseId!, LeadershipGeneration:registration.Term,
             AgentBootId:registration.Boot, Sequence:state.ReportSequence);
         return OpenSession(registration,frame,null,cancellation);
@@ -82,7 +92,7 @@ public sealed class WorkerNodeDirectory(ClusterLeadership leadership)
     internal async Task RegisterAsync(RemoteWorkerNode node, string boot, WorkerNodeChannel channel, CancellationToken cancellation)
     {
         var term = leadership.Current;
-        if (leadership.Enabled && term is not { Ready: true })
+        if (leadership.Enabled && term is null)
             throw new IOException("Management has no leadership term");
         using var disconnected = CancellationTokenSource.CreateLinkedTokenSource(cancellation, term?.Lost ?? CancellationToken.None);
         var registration = new Registration(node, boot, term?.Lease.Generation ?? 0, channel, disconnected.Token);

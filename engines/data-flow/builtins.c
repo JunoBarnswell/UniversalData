@@ -10,6 +10,45 @@ ud_status ud_iceberg_register(ud_registry *);
 /* Destination binding uses the same native comparison and cast as Source.
  * Storage fields belong to the target namespace; row identity remains the source's. */
 
+static ud_status bind_sink_job(builtin *sink) {
+    const ud_component_context *context = &sink->context;
+    const ud_activation *activation = context->activation;
+    ud_string execution = context->execution->options.execution_id;
+    if (!execution.length)
+        return UD_INVALID;
+    if (!activation->event_receipt_binding) {
+        size_t length = execution.length + context->task_id.length + context->component_id.length + 3;
+        sink->job = ud_alloc(context->memory, length);
+        if (!sink->job)
+            return UD_RESOURCE;
+        snprintf(sink->job, length, "%.*s/%.*s/%.*s", (int)execution.length, execution.data,
+                 (int)context->task_id.length, context->task_id.data,
+                 (int)context->component_id.length, context->component_id.data);
+        return UD_OK;
+    }
+
+    /* The same delivery route keeps its receipt namespace across executions and
+     * package revisions. The revision contributes to the receipt digest. */
+    ud_bytes route = {.ctx = context->memory};
+    const ud_string identity[] = {activation->package->id, context->task_id,
+                                  context->pipeline_id, context->component_id};
+    ud_status status = UD_OK;
+    for (size_t index = 0; !status && index < sizeof(identity) / sizeof(identity[0]); index++)
+        status = ud_put_string(&route, identity[index].data, identity[index].length);
+    if (!status) {
+        uint8_t digest[32];
+        char job[71] = "event:";
+        ud_hash(route.data, route.size, digest);
+        for (size_t index = 0; index < sizeof(digest); index++)
+            snprintf(job + 6 + index * 2, 3, "%02x", digest[index]);
+        sink->job = ud_strdup_n(context->memory, job, sizeof(job) - 1);
+        if (!sink->job)
+            status = UD_RESOURCE;
+    }
+    ud_bytes_clear(&route);
+    return status;
+}
+
 static ud_status prepare(void *user, const ud_component_context *c, ud_string text,
                          const ud_batch *const *in, const ud_batch *const *out, void **instance) {
     *instance = NULL;
@@ -99,6 +138,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
             caps |= UD_CONNECT_METADATA;
             if (b->delivery_mode == UD_DELIVERY_RECEIPT)
                 caps |= UD_CONNECT_RECEIPTS;
+            if (c->activation->event_receipt_binding)
+                caps |= UD_CONNECT_TRANSACTIONAL_DML;
             if (b->load_mode == UD_LOAD_NATIVE)
                 caps |= UD_CONNECT_NATIVE_BULK;
         }
@@ -263,21 +304,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
             if (!b->schema_policy.data)
                 s = UD_RESOURCE;
         }
-        ud_activation *e = c->activation;
-        if (!s && !e->execution->options.execution_id.length)
-            s = UD_INVALID;
-        size_t len = e->execution->options.execution_id.length + c->task_id.length +
-                     c->component_id.length + 64;
-        if (!s) {
-            b->job = ud_alloc(c->memory, len);
-            if (!b->job)
-                s = UD_RESOURCE;
-            else
-                snprintf(b->job, len, "%.*s/%.*s/%.*s",
-                         (int)e->execution->options.execution_id.length,
-                         e->execution->options.execution_id.data, (int)c->task_id.length,
-                         c->task_id.data, (int)c->component_id.length, c->component_id.data);
-        }
+        if (!s)
+            s = bind_sink_job(b);
     }
     if (!s && kind == SQL_COMMAND)
         s = ud_builtin_sql_command_prepare(b);
@@ -369,17 +397,10 @@ static ud_status step(void *ptr, const ud_component_event *event) {
     }
     if (kind == SQL_COMMAND)
         return ud_builtin_sql_command(b, event->batch);
-    if (kind == SQL_SINK || kind == REST_SINK) {
-        if (kind == SQL_SINK)
-            return ud_builtin_sink_records(b, event->batch);
-        ud_batch *mapped = NULL, *before = NULL;
-        ud_status status = ud_builtin_sink_batch(b, event->batch, &mapped, &before);
-        if (!status)
-            status = ud_builtin_sink_write(b, mapped, before);
-        ud_batch_destroy(mapped);
-        ud_batch_destroy(before);
-        return status;
-    }
+    if (kind == SQL_SINK)
+        return ud_builtin_sink_records(b, event->batch);
+    if (kind == REST_SINK)
+        return ud_builtin_sink_write(b, event->batch);
     if (kind == SORT || kind == JOIN || kind == WINDOW || kind == AGGREGATE)
         return ud_operator_push(b->operator, event->input, event->batch);
     return ud_builtin_transformed(b, event->batch);

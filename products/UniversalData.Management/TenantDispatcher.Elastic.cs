@@ -175,8 +175,7 @@ public sealed partial class TenantDispatcher
         {
             await lifetime.CancelAsync();
             await heartbeat;
-            try { catalog.ReleaseLease(lease); }
-            catch (UniversalDataException error) when (Retryable(error)) { }
+            ReleaseCatalogLease(catalog, lease);
         }
     }
 
@@ -290,7 +289,7 @@ public sealed partial class TenantDispatcher
         using (reservation)
         {
             try { await StartWorker(id,reservation.Placements[0],cancellation); }
-            catch (UniversalDataException error) when (Retryable(error)) { }
+            catch (UniversalDataException error) when (CatalogInterruption(error)) { leadership.CatalogUnavailable(error); }
         }
     }
 }

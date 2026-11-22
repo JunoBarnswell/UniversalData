@@ -52,6 +52,7 @@ ud_status ud_odbc_diagnostic(odbc_state *);
 ud_status ud_odbc_read_open(void *, const ud_read_options *, const ud_batch *);
 ud_status ud_odbc_read_next(void *, ud_batch **);
 ud_status ud_odbc_read_close(void *);
+ud_status ud_odbc_set_isolation(odbc_state *, int32_t);
 ud_status ud_odbc_begin(void *, int32_t);
 ud_status ud_odbc_commit(void *);
 ud_status ud_odbc_rollback(void *);

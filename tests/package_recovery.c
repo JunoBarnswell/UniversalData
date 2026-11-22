@@ -139,6 +139,11 @@ int main(int argc, char **argv) {
         CHECK(m.state == (s == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED
                           : s                    ? UD_EXEC_FAILED
                                                  : UD_EXEC_SUCCEEDED));
+        if (s == UD_COMMIT_UNKNOWN && argc == 10) {
+            ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION};
+            OK(ud_execution_error_details(e, &detail));
+            CHECK(detail.cause == atoi(argv[9]));
+        }
         if (!s) {
             ud_value v;
             OK(ud_execution_variable(e, (ud_string){"n", 1}, &v));

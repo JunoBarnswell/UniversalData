@@ -1,3 +1,4 @@
+using System.Data;
 using SqlSugar;
 using UniversalData;
 
@@ -27,16 +28,29 @@ public static class LocalOrmCase
             $"entry_id INTEGER NOT NULL, label TEXT, PRIMARY KEY(owner_id, entry_id))"), cancellation);
         try
         {
-            var visible = DataJob.Define<object>("local-orm-commit").Transaction(Source)
+            var visible = DataJob.Define<object>("local-orm-commit").Transaction(IsolationLevel.Serializable, Source)
                 .ExecuteSql(Source, $"INSERT INTO {Table} (owner_id, entry_id, label) VALUES " +
                     "(1, 1, 'other owner'), (2, 1, 'before'), (2, 2, NULL)")
                 .ExecuteSql(Source, $"UPDATE {Table} SET label = 'updated' WHERE owner_id = 2 AND entry_id = 1")
                 .FromSql<LocalOrmRow>(Source,
                     $"SELECT owner_id, entry_id, label FROM {Table} WHERE owner_id = 2 ORDER BY entry_id")
                 .Return();
+            var plan = await client.ValidateAsync(visible, cancellation);
+            Require(plan.IsValid && plan.Document.GetProperty("transaction").GetProperty("isolation").GetString() == "serializable",
+                "The Native plan did not report the selected transaction isolation");
             var inside = await Read(client, visible, cancellation);
             Require(inside.Count == 2 && inside[0].Label == "updated" && inside[1].Label is null,
                 "A Native transaction query did not see its own SQL writes or preserve NULL");
+
+            var unsupported = DataJob.Define<object>("local-orm-unsupported-isolation")
+                .Transaction(IsolationLevel.ReadCommitted, Source)
+                .ExecuteSql(Source, $"INSERT INTO {Table} (owner_id, entry_id, label) VALUES (4, 1, 'unsupported')");
+            try
+            {
+                await client.RunAsync(unsupported, cancellation);
+                throw new InvalidOperationException("SQLite accepted a different requested isolation level");
+            }
+            catch (UniversalDataException error) when (error.Code == StatusCode.Unsupported) { }
 
             var committed = await Read(client, Query("local-orm-independent", "SELECT owner_id, entry_id, label " +
                 $"FROM {Table} ORDER BY owner_id, entry_id"), cancellation);

@@ -191,7 +191,7 @@ ud_status ud_builtin_source_read_mode(const ud_component_context *c, const ud_js
      * must never bind a Journal, resume cursor facts, or share a transaction
      * with a source cursor. */
     if (c->execution->options.state_directory.length || c->execution->options.resume ||
-        c->execution->journal || c->activation->transaction_serial ||
+        c->execution->journal || c->activation->transaction_isolation ||
         ud_transaction_active(c->activation))
         return UD_UNSUPPORTED;
     if (ud_member(config, "incremental") || ud_member(config, "partitionCount") ||
@@ -315,7 +315,7 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
         s = ud_builtin_sink_delivery(c, kind, config, &delivery);
         if (!s)
             s = ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy);
-        if (!s && policy != UD_ERROR_FAIL && !c->activation->transaction_serial)
+        if (!s && policy != UD_ERROR_FAIL && !c->activation->transaction_isolation)
             s = UD_UNSUPPORTED;
         if (!s)
             s = error_schema(c, config, in[0], 0, out);

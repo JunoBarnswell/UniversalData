@@ -9,8 +9,6 @@ public sealed class WorkerReservations(HostPolicy policy, ProductConfiguration c
 {
     private readonly object gate = new();
     private readonly Dictionary<(string Node, bool Remote), (uint Cpu, uint Processes, ulong Memory)> usage = new();
-    public bool Ready => supervisor.Ready;
-
     public WorkerNodeStatus[] Status(string tenant)
     {
         var local = Local(tenant);
@@ -107,6 +105,33 @@ public sealed class WorkerReservations(HostPolicy policy, ProductConfiguration c
     private static NativePlacementBudget PlacementBudget(WorkerBudget budget) =>
         new(budget.CpuSlots, budget.ConsumerLanes, budget.NativeMemoryBytes, budget.ProcessMemoryBytes);
 
+    private (RemoteWorkerNode Node, bool Remote)[] Candidates(string tenant, bool remote, System.Text.Json.JsonElement? package) =>
+        [.. (configuration.Cluster ? Enumerable.Empty<(RemoteWorkerNode, bool)>() : [(Local(tenant), false)]),
+         .. (remote ? directory.Nodes.Where(node => node.AllowedTenants.Contains(tenant, StringComparer.Ordinal) &&
+             (package is null || Supports(node, tenant, package.Value))).Select(node => (node, true)) :
+             Enumerable.Empty<(RemoteWorkerNode, bool)>())];
+
+    internal object ExecutionReadiness(string tenant, WorkerParallelism? plan, System.Text.Json.JsonElement? package)
+    {
+        var nodes = Candidates(tenant, remote: true, package);
+        lock (gate)
+        {
+            var online = nodes.Select(node => PlacementNode(node.Node, node.Remote, true)).Where(node => node.Online).ToArray();
+            int requested = checked((int)(plan?.WorkerProcesses ?? 1));
+            bool ready = online.Length != 0 &&
+                NativeWorkerPlacement.Plan(PlacementBudget(Budget(plan)), policy.MemoryLimit, online, requested) is not null;
+            return new
+            {
+                ready,
+                reason = ready ? null : Rejection(tenant, true, package, null, false),
+                observedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                eligibleNodes = online.Length,
+                availableProcesses = online.Sum(node => (long)node.AvailableProcesses),
+                requestedProcesses = requested
+            };
+        }
+    }
+
     internal WorkerReservation? TryReserve(string tenant, WorkerParallelism? plan, bool remote, int count,
         IReadOnlyList<WorkerPlacement?>? pinned = null, WorkerPlacement? excluded = null,
         System.Text.Json.JsonElement? package = null)
@@ -114,11 +139,7 @@ public sealed class WorkerReservations(HostPolicy policy, ProductConfiguration c
         if (count == 0) return new WorkerReservation([], static () => { });
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         var budget = Budget(plan);
-        (RemoteWorkerNode Node, bool Remote)[] nodes = [.. (configuration.Cluster
-            ? Enumerable.Empty<(RemoteWorkerNode, bool)>() : [(Local(tenant), false)]), .. (remote
-            ? directory.Nodes.Where(node => node.AllowedTenants.Contains(tenant, StringComparer.Ordinal) &&
-                (package is null || Supports(node, tenant, package.Value))).Select(node => (node, true))
-            : Enumerable.Empty<(RemoteWorkerNode, bool)>())];
+        var nodes = Candidates(tenant, remote, package);
         if (nodes.Length == 0) return null;
         lock (gate)
         {

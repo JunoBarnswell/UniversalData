@@ -52,11 +52,13 @@ def incremental_job(call, source, target, connections, catalog):
     result = call("/api/publications", "POST", publication)
     assert result["deployment"]["environment"] == environment, result
     assert call("/api/publications", "POST", publication) == result
+    assert call("/api/publications/lookup", "POST", publication) == result
     call(env_path, "PUT", dict(packageId=name, expectedRevision="1", packageParameters={"marker": "v2"}))
     wait_execution(call, name, 1)
     moved = source.with_suffix(".unavailable")
     source.rename(moved)
     try:
+        assert call("/api/publications/lookup", "POST", publication) == result
         assert call("/api/publications", "POST", publication) == result
     finally:
         moved.rename(source)

@@ -125,12 +125,23 @@ public sealed class Catalog : IDisposable
         }
     }
     public string? Get(CatalogKind kind, string id, ulong revision)
+        => Read(kind, id, revision, confirmed: false);
+
+    /// <summary>Resolve a document or its absence at the authority. Zero selects the latest revision.</summary>
+    public string? GetConfirmed(CatalogKind kind, string id, ulong revision = 0)
+        => Read(kind, id, revision, confirmed: true);
+
+    private string? Read(CatalogKind kind, string id, ulong revision, bool confirmed)
     {
         lock (sync)
         {
             Open(); using var values = new NativeStrings(id);
             var key = Key(kind, values[0], revision);
-            int status = Native.ud_catalog_get(catalog, ref key, out var text, out var length);
+            IntPtr text;
+            uint length;
+            int status = confirmed
+                ? Native.ud_catalog_get_confirmed(catalog, ref key, out text, out length)
+                : Native.ud_catalog_get(catalog, ref key, out text, out length);
             if (status == (int)StatusCode.End) return null;
             Check(status); return DataOwnership.Text(text, length);
         }
@@ -467,6 +478,7 @@ internal static partial class Native
         out ulong count, [Out] byte[] digest);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_put(IntPtr catalog, ref CatalogKey key, StringValue json);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_get(IntPtr catalog, ref CatalogKey key, out IntPtr json, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_get_confirmed(IntPtr catalog, ref CatalogKey key, out IntPtr json, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_query(IntPtr catalog, StringValue query, out IntPtr json, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_record_event(IntPtr catalog, ref ExecutionEventValue executionEvent, ulong sequence);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_latest_revision(IntPtr catalog, int kind, StringValue id, out ulong revision);

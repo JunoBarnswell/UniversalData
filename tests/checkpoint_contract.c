@@ -23,6 +23,10 @@ int main(int argc,char **argv) {
         .authorize = authorize,.tenant = {"test",4},.execution_id = {"identity",8},.state_directory = directory,.resume = 1};
     ud_execution *execution = NULL;
     OK(ud_execution_create_json((ud_string){package,sizeof(package)-1},&options,&execution));
-    CHECK(ud_execution_execute(execution) == UD_INCOMPATIBLE); OK(ud_execution_destroy(execution));
+    CHECK(ud_execution_execute(execution) == UD_COMMIT_UNKNOWN);
+    ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION};
+    OK(ud_execution_error_details(execution, &detail));
+    CHECK(detail.cause == UD_INCOMPATIBLE);
+    OK(ud_execution_destroy(execution));
     CHECK(!ud_memory_used(memory)); OK(ud_context_destroy(memory)); return 0;
 }

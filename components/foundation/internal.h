@@ -40,6 +40,8 @@ typedef struct ud_memory_reservation ud_memory_reservation;
 ud_status ud_memory_reserve(ud_context *, uint64_t, ud_memory_reservation **);
 void ud_memory_release(ud_memory_reservation *);
 ud_status ud_flush(ud_context *, FILE *);
+ud_status ud_sync_file(ud_context *, const char *path);
+ud_status ud_confirm_file(ud_context *, const char *path);
 ud_status ud_publish(ud_context *, const char *from, const char *to);
 ud_status ud_replace_file(ud_context *, const char *from, const char *to);
 ud_status ud_sync_parent(ud_context *, const char *path);

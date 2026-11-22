@@ -22,6 +22,7 @@ ud_status ud_pipeline_plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_s
     UD_TRY(ud_json_quote(b, p->id.data, p->id.length));
     UD_TRY(ud_bytes_put(b, ",\"task\":", sizeof(",\"task\":") - 1));
     UD_TRY(ud_json_quote(b, p->execution->task_id.data, p->execution->task_id.length));
+    UD_TRY(ud_transaction_describe(p->execution, b));
     UD_TRY(ud_bytes_put(b, ",", 1));
     UD_TRY(json_number(b, "treeConcurrency", p->concurrency));
     if (p->execution->execution->options.worker_members) {
@@ -38,6 +39,10 @@ ud_status ud_pipeline_plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_s
     }
     UD_TRY(ud_bytes_put(b, ",", 1));
     UD_TRY(json_number(b, "confirmedEpoch", atomic_load(&p->confirmed_epoch)));
+    if (p->delivery_mode.length) {
+        UD_TRY(ud_bytes_put(b, ",\"deliveryMode\":", sizeof(",\"deliveryMode\":") - 1));
+        UD_TRY(ud_json_quote(b, p->delivery_mode.data, p->delivery_mode.length));
+    }
     if (p->execution->execution->options.state_directory.length)
         UD_TRY(ud_bytes_put(
             b, ",\"recoveryOrdering\":\"concurrent-trees-and-serialized-journal-frames\"",

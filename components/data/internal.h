@@ -58,6 +58,7 @@ ud_status ud_field_cast_metadata(ud_context *, const ud_field *, const ud_field 
 ud_status ud_lineage_merge(ud_context *, const ud_field *, uint32_t, ud_id **, uint32_t *);
 ud_status ud_batch_create_named(ud_context *, const ud_field *, uint32_t, uint32_t, ud_string,
                                 ud_batch **);
+ud_status ud_json_known_members(const ud_json *, const ud_field *, uint32_t columns);
 ud_status ud_json_value_decode(ud_context *, const ud_field *, const ud_json *, int32_t,
                                ud_value *);
 ud_status ud_json_value_encode(ud_bytes *, const ud_field *, const ud_value *);

@@ -70,11 +70,32 @@ SQL 占位符使用目标驱动的语法。`BindParameters` 将作业输入绑�
 
 `Transaction("finance")` 声明单库事务。多库事务通过 `Transaction("orders", "finance")` 声明参与者，由 Native 协调器检查驱动能力并持有参与者连接。SQLite 单库事务使用 `serializable`，其他数据库使用 `readCommitted`。配置 XA 的数据库应具备 Native 文档所列的事务和回执权限。执行状态为 `CommitUnknown` 时保存 `DataExecutionException.Reference`，使用原作业、输入和引用调用 `DataClient.ResumeAsync`。恢复按 Native Journal 的已持久化决定推进。
 
+```csharp
+var closeLedger = DataJob.Define("ledger.close")
+    .Transaction(System.Data.IsolationLevel.Serializable, "finance")
+    .ExecuteSql("finance", "UPDATE ledger_periods SET closed = TRUE WHERE period_id = 42");
+
+var plan = await data.ValidateAsync(closeLedger, ct);
+Console.WriteLine(plan.Document.GetProperty("transaction").GetProperty("isolation"));
+```
+
+可显式请求 `ReadCommitted`、`RepeatableRead` 或 `Serializable`。执行时驱动必须应用所选隔离级别。SQLite 接受单参与者任务级的 `Serializable`，Oracle 拒绝 `RepeatableRead`。嵌套事务沿用外层隔离，显式冲突在绑定时拒绝。SDK 和 `ud_cli validate` 输出同一份 Native 计划，`transaction` 字段列出解析后的隔离、范围与参与者。
+
 `StartAsync` 返回 `EtlRun`，可读取强类型进度、诊断和执行事件。`StopAsync` 请求排空到确认边界，`CancelAsync` 请求取消执行。取消 `WaitAsync` 的令牌会结束调用方等待。直接流式读取使用当前数据库游标，带持久边界的作业按检查点恢复。
 
 `FromMessages` 和 `ToMessages` 使用 Native Kafka、RabbitMQ、RocketMQ 5、ActiveMQ Classic 和 ActiveMQ Artemis。`FromMessages<TRow>` 读取 `TRow` 声明的消息体字段，对应原生 `mq.source` 的 `includeMetadata: false`。通用消息作业至少交付一次，目标提交后才确认源消息。Kafka 到 Kafka 可声明 `KafkaTransaction(checkpointTopic)`，将输出、位点和检查点一起提交。HTTP 使用 `FromHttp`、`Request` 和 `ToHttp`。`FromHttp` 读取 JSON 数组或带 `rows` 和 `nextCursor` 的分页对象，作业也可指定分页字段名。
 
 消息地址的读写权限按资源和地址配置，例如 `broker-resource/queue/orders` 或 `broker-resource/topic/orders`。消费组提交位点需要 `broker-resource/group/<group>` 的写权限。无消费组的队列使用队列的写权限确认消息。
+
+```csharp
+var ingestPaidOrders = DataJob.Define("orders.rabbit")
+    .FromMessages<Order>("orders-broker", "paid-orders", queue: true)
+    .ToTable("finance", "paid_orders")
+    .Append()
+    .EventReceipt();
+```
+
+`EventReceipt()` 要求从一条 RabbitMQ 队列直接写入一个支持原子回执的 SQL 目标。生产者须为每条消息提供不可变的非空 `message_id`。Native 将单条业务写入与回执放在同一目标数据库事务中，确认提交后才推进源确认。同一消息 ID 和规范化输入重投时沿用回执，摘要冲突时停止。该模式限制为单执行通道，绑定计划将目标确认标为 `EventReceipt`。
 
 预览包含消息源的路径时，Native 绑定端口和字段结构，返回 `sampled: false` 与零行样本。代理连接、订阅、消费和确认均发生在正式执行阶段。
 
@@ -109,6 +130,8 @@ ud_cli publish orders.sync --config erp.yaml --run --request-id orders-2026-11-2
 ```
 
 参数依次覆盖作业默认值、参数文件、环境变量、显式命令行参数和本次 C# 输入。环境变量可用 `UD_PARAMETERS_ORDERSSYNC` 提供 JSON 对象，命令行可用 `--set FromId=1000`。发布使用宿主凭据引用。已认证客户端通过 `POST /api/publications` 冻结 Package、预期修订、环境修订、调度、参数和可选首跑。可用 `PUT /api/environments/{id}/versions` 保存该作业的环境参数修订。重试时复用请求号。用管理端的执行编号调用 CLI `status`、`stop`、`cancel` 和 `resume`。
+
+提交结果为 `CommitUnknown` 时，发布者可以用原始 `JobPublicationRequest` 调用 `EtlManagementClient.FindPublicationAsync`，执行提交者可以用原始请求号调用 `FindExecutionAsync`。查得执行受理回执后，用其执行编号查询当前状态。查询返回 `End` 表示 Catalog 在该次权威读取时没有找到回执，再次提交同一动作时应继续使用原请求与请求号。
 
 作业可通过 `JobExecutionOptions` 或 YAML 的 `execution` 配置 `batchRows`、`edgeCapacity`、`parallelism`、`memoryBytes`、`timeoutMilliseconds`、`maxConnectionsPerSource` 和 `messagePrefetch`。RabbitMQ 支持最多 65,535 条预取，实际在途消息同时受批次行数和在途字节约束。其他驱动执行各自的协议上限。Native 运行进度报告实际选项、批次数、已提交和已确认的行数，以及队列高水位。宿主策略决定授权和资源上限。`ConfigureWorkers` 管理本地会话配额，`MaxSessionsPerWorker` 控制同一 Worker 进程可并发承载几个单槽作业。
 

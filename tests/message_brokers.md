@@ -37,6 +37,8 @@ python tests/integration_resource.py UD_TEST_ACTIVEMQ_ARTEMIS_CONFIG "$TEST" "$P
 
 另有逻辑地址与拨号端点授权拒绝、关闭未确认会话后再投递、JSON 解码失败后再投递三个方面。失败验证只确认已核对的消息。Kafka 通过同组下相同分区和偏移证明未确认消息重新可见。这些通用 Case 使用 Journal 的至少一次模式。
 
+如果构建包含 SQLite 模块，可以用同一个 RabbitMQ 配置执行 `ctest -R integration_rabbitmq_event_receipt`。此用例使用独占的 `jsonSource`，在 SQL 提交后和 ACK 前中断执行，用不同批大小启动新执行，并分别检查 RabbitMQ 重投、SQLite 业务行和回执。同 ID 的规范化内容可以再次确认。已声明但未写入 SQL 的字段出现变化，或消息缺少 ID 时，执行停止并保留原消息。
+
 Kafka 配置还运行独立的有界事务 Case。工具向分区 1 写入一条时间为 5、值为 7 的 JSON 记录，同时在分区 0 留下对照消息。管道固定消费分区 1，在偏移 1 自然终止。目标按窗口键哈希重分区，对应分区必须出现一条窗口起点为 0、终点为 10、总和为 7 的记录。工具随后以相同的 Package、执行 ID 和消费组在新 Journal 中要求从 Broker 恢复。第二次运行也必须自然成功终止。目标没有新增消息；确认分区 0 的对照消息后，源主题没有剩余交付。`transaction-journal` 和 `transaction-restore-journal` 分别保留两次执行的证据。
 
 `integration_kafka_process_takeover` 使用独立的 `UD_TEST_KAFKA_TAKEOVER_CONFIG` 和三个新建的事务主题。测试在原生目标报告 Broker 事务已提交后强制终止原进程，并用相同执行 ID 和新 Journal 启动新进程。新进程从 Broker 恢复后，窗口结果、两个分区的输入以及重复输出均按上述规则核对。

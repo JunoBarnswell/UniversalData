@@ -45,7 +45,8 @@ static ud_status capture_original(ud_file_generation *generation) {
     if (exists) {
         uint8_t hash[32];
         UD_TRY(ud_file_hash(ctx, generation->original, hash));
-        return memcmp(hash, generation->base_hash, 32) ? UD_FENCED : UD_OK;
+        return memcmp(hash, generation->base_hash, 32) ? UD_FENCED
+                                                       : ud_confirm_file(ctx, generation->original);
     }
     UD_TRY(grant(generation, generation->original, UD_ACCESS_WRITE));
     size_t path_size = strlen(generation->original) + 8;
@@ -306,36 +307,52 @@ ud_status ud_file_generation_check_original(ud_file_generation *generation) {
 ud_status ud_file_generation_publish(ud_file_generation *generation) {
     ud_context *ctx = generation->activation->execution->ctx;
     UD_TRY(ud_connection_lease_authorize(generation->lease, UD_ACCESS_WRITE));
-    if (!generation->prepared) {
+    if (!generation->prepared)
         UD_TRY(ud_file_hash(ctx, generation->temporary, generation->output_hash));
+    int exists;
+    ud_status status = file_exists(ctx, generation->target, &exists);
+    uint8_t target_hash[32];
+    if (!status && exists)
+        status = ud_file_hash(ctx, generation->target, target_hash);
+    if (status)
+        return generation->prepared ? UD_COMMIT_UNKNOWN : status;
+
+    int published = exists && !memcmp(target_hash, generation->output_hash, 32);
+    if (!published) {
+        if (exists != generation->base_exists ||
+            (exists && memcmp(target_hash, generation->base_hash, 32)))
+            return UD_FENCED;
+        if (generation->prepared) {
+            uint8_t staged_hash[32];
+            if (ud_file_hash(ctx, generation->temporary, staged_hash))
+                return UD_COMMIT_UNKNOWN;
+            if (memcmp(staged_hash, generation->output_hash, 32))
+                return UD_CORRUPT;
+        }
+        if (exists) {
+            UD_TRY(ud_connection_lease_authorize(generation->lease, UD_ACCESS_DELETE));
+            uint8_t original_hash[32];
+            UD_TRY(ud_file_hash(ctx, generation->original, original_hash));
+            if (memcmp(original_hash, generation->base_hash, 32))
+                return UD_FENCED;
+        }
+    }
+    /* The staged name is needed for retry after the intent is written. A
+     * matching destination must prove the same persistence under the lock. */
+    status = ud_confirm_file(ctx, published ? generation->target : generation->temporary);
+    if (status)
+        return generation->prepared || published ? UD_COMMIT_UNKNOWN : status;
+    if (!generation->prepared) {
         UD_TRY(record(generation, UD_FILE_PREPARED));
         generation->prepared = 1;
     }
-    int exists;
-    UD_TRY(file_exists(ctx, generation->target, &exists));
-    uint8_t hash[32];
-    if (exists) {
-        UD_TRY(ud_file_hash(ctx, generation->target, hash));
-        if (!memcmp(hash, generation->output_hash, 32)) {
-            return UD_OK;
-        }
-    }
-    if (exists != generation->base_exists || (exists && memcmp(hash, generation->base_hash, 32)))
-        return UD_FENCED;
-    UD_TRY(ud_file_hash(ctx, generation->temporary, hash));
-    if (memcmp(hash, generation->output_hash, 32))
-        return UD_CORRUPT;
-    if (exists) {
-        UD_TRY(ud_connection_lease_authorize(generation->lease, UD_ACCESS_DELETE));
-        UD_TRY(ud_file_hash(ctx, generation->original, hash));
-        if (memcmp(hash, generation->base_hash, 32))
-            return UD_FENCED;
-    }
-    ud_status status = exists ? ud_replace_file(ctx, generation->temporary, generation->target)
-                              : ud_publish(ctx, generation->temporary, generation->target);
-    if (status)
-        return UD_COMMIT_UNKNOWN;
-    return UD_OK;
+    if (published)
+        return UD_OK;
+
+    UD_TRY(ud_connection_lease_authorize(generation->lease, UD_ACCESS_WRITE));
+    status = exists ? ud_replace_file(ctx, generation->temporary, generation->target)
+                    : ud_publish(ctx, generation->temporary, generation->target);
+    return status ? UD_COMMIT_UNKNOWN : UD_OK;
 }
 void ud_file_generation_destroy(ud_file_generation *generation) {
     if (!generation)

@@ -177,7 +177,7 @@ ud_status ud_builtin_source_read_mode(const ud_component_context *c, const ud_js
 ud_status ud_builtin_sink_batch(builtin *b, const ud_batch *input, ud_batch **out,
                                 ud_batch **before);
 ud_status ud_builtin_sink_schema(builtin *b);
-ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input, const ud_batch *before);
+ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input);
 ud_status ud_builtin_snapshot_store(builtin *b, ud_batch *batch, uint32_t port);
 ud_status ud_builtin_source_identity(builtin *b, ud_batch *input, ud_batch **out);
 ud_status ud_builtin_source_next(builtin *b, ud_batch **out);

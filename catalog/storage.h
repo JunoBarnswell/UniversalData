@@ -24,6 +24,10 @@ int64_t catalog_column_int(catalog_statement *, int);
 void catalog_finalize(catalog_statement *);
 ud_status catalog_postgresql_open(struct ud_catalog *, ud_string);
 #ifdef UD_WITH_POSTGRESQL_CATALOG
-ud_status catalog_postgresql_status(PGconn *, const PGresult *);
+ud_status catalog_postgresql_query(ud_catalog *, const char *, int, const Oid *,
+                                  const char *const *, const int *, const int *, PGresult **);
+ud_status catalog_postgresql_begin(ud_catalog *, const char *);
+ud_status catalog_postgresql_admit(ud_catalog *);
+ud_status catalog_postgresql_finish(ud_catalog *, ud_status);
 #endif
 #endif

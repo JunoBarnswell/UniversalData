@@ -5,7 +5,7 @@ remote Worker protocol:
 
 ```text
 active Management  ─┐
-                     ├─ dedicated PostgreSQL 17 Catalog + shared identity/key
+                     ├─ synchronous PostgreSQL 17 Catalog + shared identity/key
 standby Management ─┘
                      │
                      ├─ mTLS worker-1 (one process slot)
@@ -23,9 +23,9 @@ and missing results are visible.
 - Linux or WSL2 with Python 3 and `openssl`.
 - Product binaries built with HTTP and PostgreSQL support: `dotnet`,
   `UniversalData.Management.dll`, `ud_worker.dll`, and the matching CLI.
-- A connection file for a new, dedicated PostgreSQL 17 Catalog database.
+- A connection file for a new, dedicated PostgreSQL 17 Catalog database with a synchronous streaming standby. Use the fenced writer endpoint. Set `hostaddr` to its numeric address and use `host` for TLS verification.
 - The PostgreSQL role must be able to create/read the Catalog objects used by
-  the normal `catalog migrate import` command.
+  the normal `catalog migrate import` command and read `pg_stat_replication`.
 
 The state directory is private (`0700`), contains generated certificates,
 the shared Catalog key, identity password, PID/start-time ownership records,
@@ -73,5 +73,5 @@ The state directory holds the evidence and logs after `stop`.
 `cluster_harness.py` implementation. CTest already registers it as
 `management_sentinel_ha` on Linux builds with HTTP and PostgreSQL. The test reads
 `UD_TEST_SENTINEL_POSTGRESQL_CONNECTION_FILE`, returns CTest skip code 77 when
-the dedicated PostgreSQL 17 fixture is absent, and uses a temporary private
+the dedicated synchronous PostgreSQL 17 fixture is absent, and uses a temporary private
 artifact directory.

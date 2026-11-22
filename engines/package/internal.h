@@ -46,6 +46,7 @@ struct ud_activation {
     ud_scope *scope;
     ud_scope globals, project_scope;
     ud_string task_id, pipeline_id, component_id;
+    const uint8_t *event_receipt_binding; /* 32-byte digest from the bound delivery plan. */
     ud_string http_response_headers;
     int32_t http_status;
     uint64_t deadline, invocation;
@@ -62,7 +63,7 @@ struct ud_activation {
     struct ud_transaction *transaction;
     const ud_json *event_handlers, *task_definition;
     uint32_t event_depth;
-    int transaction_serial;
+    int32_t transaction_isolation;
     int transaction_epoch;
     const ud_json *transaction_participants;
     void *cancel_instance;
@@ -224,6 +225,7 @@ ud_status ud_connection_definition(ud_activation *, ud_string, const ud_json **,
                                    int *project_scope);
 ud_status ud_connection_definitions_check(const ud_json *);
 typedef struct ud_connection_lease ud_connection_lease;
+ud_status ud_connection_lease_require_connector(const ud_connection_lease *, const char *id);
 ud_status ud_connections_create(ud_execution *, ud_connection_pool *);
 ud_status ud_connections_destroy(ud_execution *);
 void ud_connections_cancel(ud_execution *);
@@ -231,6 +233,7 @@ ud_status ud_connections_release_activation(ud_activation *);
 ud_status ud_connections_diagnostics(ud_execution *, ud_bytes *);
 ud_status ud_transaction_enter(ud_activation *, const ud_json *, int validate);
 ud_status ud_transaction_leave(ud_activation *, ud_status);
+ud_status ud_transaction_describe(const ud_activation *, ud_bytes *);
 ud_status ud_transaction_fact_position(ud_activation *, ud_string *identity, uint64_t *order);
 int ud_transaction_task_done(ud_activation *);
 int ud_transaction_recovered(const ud_activation *);

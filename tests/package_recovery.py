@@ -20,8 +20,10 @@ with tempfile.TemporaryDirectory(prefix='ud-package-recovery-') as folder:
               'paths':[{'from':a,'output':port,'to':b,'input':0} for a,port,b in [('source',0,'multicast'),('multicast',0,'db'),('multicast',1,'file')]]}]}
   path=r/'package.json';path.write_text(json.dumps(p));return r,p
  def args(r,resume=0,mode=0,status=0):return [runner,str(r/'package.json'),str(r/'target.db'),str(r/'out.ndjson'),str(r/'effect.txt'),str(r/'state'),str(resume),str(mode),str(status)]
- def run(r,resume=0,mode=0,status=0,exit=0):
-  result=subprocess.run(args(r,resume,mode,status),capture_output=True,text=True,timeout=30)
+ def run(r,resume=0,mode=0,status=0,exit=0,cause=None):
+  command=args(r,resume,mode,status)
+  if cause is not None: command.append(str(cause))
+  result=subprocess.run(command,capture_output=True,text=True,timeout=30)
   assert result.returncode==exit,(r.name,result.returncode,result.stdout,result.stderr)
  def rows(r):
   c=sqlite3.connect(r/'target.db');values=c.execute('SELECT x FROM dest ORDER BY x').fetchall();c.close();return [v[0] for v in values]
@@ -51,10 +53,10 @@ with tempfile.TemporaryDirectory(prefix='ud-package-recovery-') as folder:
   result=subprocess.run(args(r,resume=resume,mode=mode)+['11'],capture_output=True,text=True,timeout=30)
   assert result.returncode==code,(result.stdout,result.stderr)
   if not code:assert rows(r)==list(range(31)) and [json.loads(line) for line in (r/'out.ndjson').read_text().splitlines()]==[{'x':i} for i in range(31)]
- r,p=fixture('changed-source');run(r,mode=2,exit=91);(r/'source.ndjson').write_text('{"x":999}\n');run(r,resume=1,status=9);assert len(rows(r))==7
- r,p=fixture('changed-package');run(r,mode=2,exit=91);p['id']='changed';(r/'package.json').write_text(json.dumps(p));run(r,resume=1,status=10);assert len(rows(r))==7
- r,p=fixture('corrupt');run(r);record=sorted((r/'state').glob('*.udg'))[-1];b=bytearray(record.read_bytes());b[-1]^=1;record.write_bytes(b);run(r,resume=1,status=9)
- r,p=fixture('gap');run(r);sorted((r/'state').glob('*.udg'))[-1].unlink();run(r,resume=1,status=9)
+ r,p=fixture('changed-source');run(r,mode=2,exit=91);(r/'source.ndjson').write_text('{"x":999}\n');run(r,resume=1,status=16,cause=9);assert len(rows(r))==7
+ r,p=fixture('changed-package');run(r,mode=2,exit=91);p['id']='changed';(r/'package.json').write_text(json.dumps(p));run(r,resume=1,status=16,cause=10);assert len(rows(r))==7
+ r,p=fixture('corrupt');run(r);record=sorted((r/'state').glob('*.udg'))[-1];b=bytearray(record.read_bytes());b[-1]^=1;record.write_bytes(b);run(r,resume=1,status=16,cause=9)
+ r,p=fixture('gap');run(r);sorted((r/'state').glob('*.udg'))[-1].unlink();run(r,resume=1,status=16,cause=9)
  r,p=fixture('fresh-on-existing');run(r);run(r,status=15)
  r,p=fixture('lock');child=subprocess.Popen(args(r,mode=5),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
  try:

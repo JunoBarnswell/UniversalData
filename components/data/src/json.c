@@ -37,7 +37,7 @@ static ud_status unbase64(ud_context *ctx, const char *text, uint32_t length, ud
     }
     return at == bytes ? UD_OK : UD_PARSE;
 }
-static ud_status known_members(const ud_json *object, const ud_field *fields, uint32_t columns) {
+ud_status ud_json_known_members(const ud_json *object, const ud_field *fields, uint32_t columns) {
     if (ud_json_kind(object) != UD_JSON_OBJECT)
         return UD_SCHEMA;
     for (uint32_t j = 0; j < ud_json_size(object); j++) {
@@ -72,7 +72,7 @@ static ud_status parse_value(ud_context *ctx, const ud_field *field, const ud_js
     if (field->type >= UD_STRUCT) {
         uint32_t count = field->type == UD_STRUCT ? field->child_count : ud_json_size(json);
         if (field->type == UD_STRUCT)
-            UD_TRY(known_members(json, field->children, field->child_count));
+            UD_TRY(ud_json_known_members(json, field->children, field->child_count));
         else if (kind != UD_JSON_ARRAY)
             return UD_SCHEMA;
         if (count && (size_t)count > SIZE_MAX / sizeof(ud_value))
@@ -128,7 +128,7 @@ static ud_status append_object(ud_batch *batch, const ud_json *object, int32_t r
     }
     for (uint32_t j = 0; j < batch->columns; j++)
         fields[j] = batch->column[j].field;
-    ud_status s = known_members(object, fields, batch->columns);
+    ud_status s = ud_json_known_members(object, fields, batch->columns);
     for (uint32_t j = 0; !s && j < batch->columns; j++) {
         s = parse_value(batch->ctx, fields + j,
                         ud_json_find(object, fields[j].name, fields[j].name_length), rounding,

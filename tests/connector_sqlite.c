@@ -159,6 +159,36 @@ static int snapshot_refresh(ud_context *ctx, sqlite3 *writer, ud_connection *rea
     OK(ud_connection_rollback(reader));
     return 0;
 }
+static int verify_durable_profile(sqlite3 *database, ud_connection *connection) {
+    sqlite3_stmt *statement = NULL;
+    CHECK(sqlite3_prepare_v2(database, "PRAGMA main.journal_mode", -1, &statement, NULL) ==
+          SQLITE_OK);
+    CHECK(sqlite3_step(statement) == SQLITE_ROW &&
+          !strcmp((const char *)sqlite3_column_text(statement, 0), "wal"));
+    sqlite3_finalize(statement);
+    CHECK(exec_fixture(database,
+        "CREATE TABLE parents(id INTEGER PRIMARY KEY);"
+        "CREATE TABLE children(parent INTEGER NOT NULL REFERENCES parents(id));"
+        "INSERT INTO parents VALUES (1)"));
+    static const char invalid[] = "INSERT INTO children VALUES (2)";
+    ud_read_options command = {.struct_size = sizeof(command), .abi_version = UD_ABI_VERSION,
+                               .sql = {invalid, sizeof(invalid) - 1}};
+    ud_command_result outcome = {.struct_size = sizeof(outcome), .abi_version = UD_ABI_VERSION};
+    CHECK(ud_connection_execute_record(connection, &command, &outcome) == UD_QUALITY);
+    CHECK(outcome.state == UD_COMMAND_REJECTED);
+    ud_command_result_clear(&outcome);
+    static const char valid[] = "INSERT INTO children VALUES (1)";
+    command.sql = (ud_string){valid, sizeof(valid) - 1};
+    OK(ud_connection_execute_record(connection, &command, &outcome));
+    CHECK(outcome.state == UD_COMMAND_COMMITTED && outcome.affected_rows == 1);
+    ud_command_result_clear(&outcome);
+    CHECK(sqlite3_prepare_v2(database, "SELECT parent FROM children", -1, &statement, NULL) ==
+          SQLITE_OK);
+    CHECK(sqlite3_step(statement) == SQLITE_ROW && sqlite3_column_int64(statement, 0) == 1 &&
+          sqlite3_step(statement) == SQLITE_DONE);
+    sqlite3_finalize(statement);
+    return 0;
+}
 int main(int argc, char **argv) {
     CHECK(argc == 4);
     const char *source_path = argv[2], *target_path = argv[3];
@@ -203,6 +233,9 @@ int main(int argc, char **argv) {
     OK(ud_connection_open(plugin, &options, &src));
     options.resource = (ud_string){"target", 6};
     OK(ud_connection_open(plugin, &options, &dst));
+    CHECK(sqlite3_close(target) == SQLITE_OK);
+    CHECK(sqlite3_open(target_path, &target) == SQLITE_OK);
+    CHECK(!verify_durable_profile(target, dst));
     OK(ud_connection_provision(dst));
     CHECK((ud_connection_capabilities(dst) & UD_CONNECT_UPSERT) != 0);
     CHECK((ud_connection_capabilities(dst) & UD_CONNECT_OVERWRITE) == 0);

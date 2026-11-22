@@ -1,6 +1,6 @@
 import { Button, Input } from "./shared/design-system/Controls";
 import { useState } from "react";
-import { post } from "./api";
+import { api, ApiError, commitUnknown, post } from "./api";
 import { canUseKafkaElasticity } from "./model";
 import type {
   ControlGraph,
@@ -24,6 +24,7 @@ export function ExecutionConfirmation({
     [elastic, setElastic] = useState(false),
     [requestId, setRequestId] = useState(() => crypto.randomUUID()),
     [breakpoints, setBreakpoints] = useState<string[][]>([]),
+    [pending, setPending] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const targets = document.dataFlows.flatMap((flow) =>
@@ -46,6 +47,7 @@ export function ExecutionConfirmation({
   const consumesMessages = targets.some(({ node }) => node.component === "mq.source");
   async function run() {
     setBusy(true);
+    setError("");
     try {
       const result = await post<RunState>("/executions", {
         requestId,
@@ -64,7 +66,28 @@ export function ExecutionConfirmation({
       });
       complete(result);
     } catch (error) {
-      setError(String(error));
+      if (commitUnknown(error)) {
+        setPending(true);
+        setError("执行请求的受理结果未知。请查询原请求。");
+      } else {
+        setError(String(error));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function findSubmission() {
+    setBusy(true);
+    try {
+      const result = await api<RunState>(`/executions/requests/${encodeURIComponent(requestId)}`);
+      complete(result);
+    } catch (failure) {
+      if (failure instanceof ApiError && failure.status === 404) {
+        setPending(false);
+        setError("Catalog 当前没有原请求的受理回执。可使用原请求编号再次提交。");
+      } else {
+        setError(`原请求的受理结果仍待确认。 ${String(failure)}`);
+      }
     } finally {
       setBusy(false);
     }
@@ -134,9 +157,13 @@ export function ExecutionConfirmation({
                         事务提交时推进消费组位点
                         <small>检查点 {delivery.checkpointTopic} / 分区 {delivery.checkpointPartition ?? 0}</small>
                       </>
-                    ) : "检查点完成后确认消费，可能移除队列消息或推进消费组位点"
+                    ) : delivery?.mode === "eventReceipt"
+                      ? "逐条 SQL 消息回执提交后确认消费"
+                      : "检查点完成后确认消费，可能移除队列消息或推进消费组位点"
                   ) : node.component === "mq.destination" ? (
                     delivery?.mode === "kafkaTransaction" ? "在 Kafka 事务中发布消息" : "向 broker 发布消息"
+                  ) : node.component === "sql.destination" && delivery?.mode === "eventReceipt" ? (
+                    "每条消息的业务写入与去重回执同事务"
                   ) : String(node.config.mode ?? node.config.fileMode ?? "外部写入")}
                 </td>
               </tr>
@@ -145,7 +172,7 @@ export function ExecutionConfirmation({
         </table>
         <p>执行将使用这一已发布版本；后续草稿更改将进入下一个版本。</p>
         {canUseKafkaElasticity(document) && <label className="checkbox">
-          <Input type="checkbox" checked={elastic} disabled={busy}
+          <Input type="checkbox" checked={elastic} disabled={busy || pending}
             onChange={(event) => {
               setElastic(event.target.checked);
               if (event.target.checked) setDebug(false);
@@ -156,7 +183,7 @@ export function ExecutionConfirmation({
         <label className="checkbox">
           <Input
             type="checkbox"
-            disabled={elastic || busy}
+            disabled={elastic || busy || pending}
             checked={debug}
             onChange={(event) => { setDebug(event.target.checked); setRequestId(crypto.randomUUID()); }}
           />
@@ -169,11 +196,12 @@ export function ExecutionConfirmation({
               <label className="checkbox" key={JSON.stringify(task.path)}>
                 <Input
                   type="checkbox"
+                  disabled={busy || pending}
                   checked={breakpoints.some(
                     (path) =>
                       JSON.stringify(path) === JSON.stringify(task.path),
                   )}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setBreakpoints((current) =>
                       event.target.checked
                         ? [...current, task.path]
@@ -182,8 +210,9 @@ export function ExecutionConfirmation({
                               JSON.stringify(path) !==
                               JSON.stringify(task.path),
                           ),
-                    )
-                  }
+                    );
+                    setRequestId(crypto.randomUUID());
+                  }}
                 />
                 {task.label}
               </label>
@@ -199,6 +228,7 @@ export function ExecutionConfirmation({
             aria-label="确认正式业务写入"
             type="checkbox"
             checked={confirmed}
+            disabled={busy || pending}
             onChange={(event) => setConfirmed(event.target.checked)}
           />
           {consumesMessages
@@ -206,14 +236,15 @@ export function ExecutionConfirmation({
             : "我已核对版本、环境和写入目标，确认执行"}
         </label>
         {error ? <p role="alert">{error}</p> : null}
+        {pending ? <p>请求编号 <code>{requestId}</code></p> : null}
         <footer>
-          <Button onClick={close}>取消</Button>
+          <Button disabled={busy} onClick={close}>取消</Button>
           <Button
             className="primary"
             disabled={!confirmed || busy}
-            onClick={() => void run()}
+            onClick={() => void (pending ? findSubmission() : run())}
           >
-            {busy ? "提交中…" : "确认正式执行"}
+            {pending ? (busy ? "查询中…" : "查询原请求") : (busy ? "提交中…" : "确认正式执行")}
           </Button>
         </footer>
       </section>

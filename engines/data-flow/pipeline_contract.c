@@ -8,6 +8,67 @@ static int configured(const node *n, const char *key, const char *expected) {
     return !ud_json_string(ud_member(n->configuration, key), &value) && ud_named(value, expected);
 }
 
+static ud_status bind_event_receipt(physical_plan *p, const ud_json *definition) {
+    ud_activation *activation = p->execution;
+    const ud_execution_options *options = &activation->execution->options;
+    if (p->count != 2 || p->paths != 1 || ud_member(definition, "parallelism") ||
+        options->worker_members > 1 || options->consumer_lanes > 1 ||
+        activation->consumer_lane_count > 1 || activation->parallel ||
+        activation->transaction_isolation || ud_transaction_active(activation))
+        return ud_fail(activation->execution->ctx, UD_UNSUPPORTED,
+                       "eventReceipt requires a direct single-worker flow outside a package transaction");
+
+    edge *path = p->edges;
+    node *source = p->nodes + path->from, *target = p->nodes + path->to;
+    const char *metadata = NULL;
+    uint32_t metadata_length = 0;
+    int source_errors, target_errors;
+    UD_TRY(ud_error_policy(source->configuration, "errorPolicy", UD_ERROR_FAIL, &source_errors));
+    UD_TRY(ud_error_policy(target->configuration, "errorPolicy", UD_ERROR_FAIL, &target_errors));
+    if (path->output != 0 || path->input != 0 ||
+        !ud_named(source->descriptor.id, "mq.source") || !configured(source, "targetType", "queue") ||
+        !configured(source, "initialPosition", "require") ||
+        ud_json_text(ud_member(source->configuration, "includeMetadata"), &metadata, &metadata_length) ||
+        !ud_named((ud_string){metadata, metadata_length}, "false") ||
+        source_errors != UD_ERROR_FAIL || ud_member(source->configuration, "group") ||
+        ud_member(source->configuration, "subscription") || ud_member(source->configuration, "filter") ||
+        ud_member(source->configuration, "fromStage") || ud_member(source->configuration, "endOffsets"))
+        return ud_pipeline_node_failed(source, UD_UNSUPPORTED, "eventReceipt queue source contract");
+    if (!ud_named(target->descriptor.id, "sql.destination") || target_errors != UD_ERROR_FAIL ||
+        (!configured(target, "mode", "append") &&
+         !(configured(target, "mode", "upsert") && ud_json_size(ud_member(target->configuration, "keys")))) ||
+        (ud_member(target->configuration, "delivery") && !configured(target, "delivery", "receipt")) ||
+        ud_member(target->configuration, "beforeField"))
+        return ud_pipeline_node_failed(target, UD_UNSUPPORTED, "eventReceipt SQL destination contract");
+
+    ud_bytes binding = {.ctx = activation->execution->ctx};
+    ud_status status = ud_bytes_put(&binding, activation->package->fingerprint,
+                                   sizeof(activation->package->fingerprint));
+    if (!status)
+        status = ud_put_string(&binding, source->json, source->json_length);
+    if (!status)
+        status = ud_put_string(&binding, target->json, target->json_length);
+    if (!status)
+        ud_hash(binding.data, binding.size, p->event_receipt_binding);
+    ud_bytes_clear(&binding);
+    return status;
+}
+
+ud_status ud_pipeline_delivery_bind(physical_plan *p, const ud_json *definition) {
+    const ud_json *delivery = ud_member(definition, "delivery");
+    int assigned = p->execution->execution->assignment_count != 0;
+    if (!delivery)
+        return assigned ? UD_UNSUPPORTED : UD_OK;
+    UD_TRY(ud_json_string(ud_member(delivery, "mode"), &p->delivery_mode));
+    if (ud_named(p->delivery_mode, "kafkaTransaction"))
+        return UD_OK;
+    static const char *keys[] = {"mode"};
+    UD_TRY(ud_json_keys(delivery, keys, 1));
+    if (ud_named(p->delivery_mode, "eventReceipt"))
+        return assigned ? UD_UNSUPPORTED : bind_event_receipt(p, definition);
+    return !assigned && ud_named(p->delivery_mode, "atLeastOnce") ? UD_OK : UD_SCHEMA;
+}
+
 static int cdc_source(const node *n) {
     const char suffix[] = ".cdc.source";
     ud_string id = n->descriptor.id;
@@ -48,7 +109,8 @@ static void target_contract(const physical_plan *p, node *n) {
         n->visibility = (effects & (UD_EFFECT_TRANSACTIONAL | UD_EFFECT_RECEIPTED)) ||
                          ud_named(n->descriptor.id, "sql.destination") ? "TargetCommit" :
                                                                         "ExternalResponse";
-        n->confirmation = effects & UD_EFFECT_RECEIPTED ? "Receipt" : "Response";
+        n->confirmation = ud_named(p->delivery_mode, "eventReceipt") ? "EventReceipt" :
+                          effects & UD_EFFECT_RECEIPTED ? "Receipt" : "Response";
     }
 }
 
@@ -196,7 +258,7 @@ ud_status ud_pipeline_validate_contract(physical_plan *p) {
             break;
         }
         if (n->descriptor.category == UD_COMPONENT_SOURCE && n->descriptor.confirm_epoch &&
-            p->execution->transaction_serial && !p->execution->transaction_epoch) {
+            p->execution->transaction_isolation && !p->execution->transaction_epoch) {
             status = UD_UNSUPPORTED;
             break;
         }

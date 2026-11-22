@@ -249,8 +249,9 @@ internal sealed class WorkerNodeAgent(
             get
             {
                 lock (gate)
-                    return processId == 0 || lifetime.IsCancellationRequested ? null :
-                        new(original.MemberId, original.Generation, original.Lease, processId, started != 0, (ulong)offsets.Count);
+                    return processId == 0 ? null :
+                        new(original.MemberId, original.Generation, original.Lease, processId, started != 0,
+                            (ulong)offsets.Count, CanAttach: !lifetime.IsCancellationRequested);
             }
         }
 
@@ -286,6 +287,9 @@ internal sealed class WorkerNodeAgent(
                         throw new InvalidDataException("Remote Worker request differs from its lease");
                     var launch = message.Data?.Deserialize<WorkerNodeLaunch>(HostPolicy.JsonOptions)
                         ?? throw new InvalidDataException("Remote Worker launch is missing");
+                    if (launch.RecoveryAgentBootId is { } priorBoot &&
+                        (!launch.Resume || priorBoot != node.boot))
+                        throw new InvalidDataException("Recovery Worker is outside its original Agent membership");
                     await InitializeAsync(launch, session.Token);
                 }
                 var commands = CommandsAsync(channel, frame, session.Token);
@@ -369,13 +373,13 @@ internal sealed class WorkerNodeAgent(
             }
             finally
             {
+                lock (gate) worker = null;
+                await process.DisposeAsync();
                 lock (gate)
                 {
-                    worker = null;
                     exitCode = code;
                     Notify();
                 }
-                await process.DisposeAsync();
             }
         }
 
@@ -446,7 +450,7 @@ internal sealed class WorkerNodeAgent(
         {
             string probe = "";
             long probeIssued = 0;
-            bool confirmed = false;
+            long? confirmedProbe = null;
             async Task ProbeAsync()
             {
                 probe = Guid.NewGuid().ToString("N");
@@ -475,7 +479,7 @@ internal sealed class WorkerNodeAgent(
                         var remaining = WorkerNodeChannel.LeaseDuration - Stopwatch.GetElapsedTime(probeIssued);
                         if (remaining <= TimeSpan.Zero) throw new IOException("Worker node lease expired");
                         expiry.CancelAfter(remaining);
-                        confirmed = true;
+                        confirmedProbe = probeIssued;
                         await ProbeAsync();
                     }
                     continue;
@@ -488,7 +492,9 @@ internal sealed class WorkerNodeAgent(
                     process = worker;
                     bound = request;
                 }
-                if (frame.Kind == "start" && confirmed && Volatile.Read(ref started) == 0 && process is not null)
+                bool hasPermit = confirmedProbe is { } confirmation && !expiry.IsCancellationRequested &&
+                    Stopwatch.GetElapsedTime(confirmation) < WorkerNodeChannel.LeaseDuration;
+                if (frame.Kind == "start" && hasPermit && Volatile.Read(ref started) == 0 && process is not null)
                 {
                     Volatile.Write(ref started, 1);
                     await process.SendAsync("start", cancellation);
@@ -514,7 +520,7 @@ internal sealed class WorkerNodeAgent(
                     await channel.SendAsync(lease.Reply("control-result", JsonSerializer.SerializeToElement(
                         new { result, value }), frame.Correlation), cancellation);
                 }
-                else if (frame.Kind is not ("cancel" or "stop") && (frame.Kind != "start" || !confirmed))
+                else if (frame.Kind is not ("cancel" or "stop") && (frame.Kind != "start" || !hasPermit))
                     throw new InvalidDataException("Invalid remote Worker command");
             }
         }
@@ -524,9 +530,11 @@ internal sealed class WorkerNodeAgent(
             try { await Task.Delay(Timeout.InfiniteTimeSpan, lifetime.Token); }
             catch (OperationCanceledException) { }
             await sessions.WaitAsync();
+            bool ownershipReleased = false;
             try
             {
                 if (execution is { } ended) await ended;
+                ownershipReleased = true;
                 if (request is { } bound)
                 {
                     var vault = new ParameterVault(bound.Policy);
@@ -537,7 +545,11 @@ internal sealed class WorkerNodeAgent(
             }
             finally
             {
-                node.active.TryRemove(new KeyValuePair<string,AgentExecution>(original.MemberId,this));
+                // Same-boot recovery relies on this slot excluding a still-live
+                // Worker. Keep the membership reserved if cleanup could not
+                // prove that its supervised process exited.
+                if (ownershipReleased)
+                    node.active.TryRemove(new KeyValuePair<string, AgentExecution>(original.MemberId, this));
                 lifetime.Dispose();
                 expiry.Dispose();
                 sessions.Release();

@@ -14,6 +14,7 @@ internal sealed class DataJobGraph(string id, Type argument)
     private string? activeFlow;
     private bool returnsResults;
     private string[]? participants;
+    private string? transactionIsolation;
     private JobExecutionOptions? options;
     private CompiledDefinition? local, published;
     internal string Id { get; } = ValidId(id);
@@ -117,20 +118,21 @@ internal sealed class DataJobGraph(string id, Type argument)
         returnsResults = true;
     }
 
-    internal void Transaction(string[] selected)
+    internal void Transaction(string[] selected, string? isolation = null)
     {
+        ArgumentNullException.ThrowIfNull(selected);
         if (selected.Length == 0 || selected.Distinct(StringComparer.Ordinal).Count() != selected.Length)
             throw new ArgumentException($"Job '{Id}' needs distinct transaction participants.");
         foreach (var name in selected) Use(name, DataJobSourceRole.Database);
         participants = selected.ToArray();
+        transactionIsolation = isolation;
         Invalidate();
     }
 
-    internal void KafkaTransaction(string checkpointTopic, uint partition)
+    internal void Delivery(object delivery)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(checkpointTopic);
-        if (activeFlow is null) throw new ArgumentException($"Job '{Id}' has no current Kafka data flow.");
-        plan.Delivery(activeFlow, new { mode = "kafkaTransaction", checkpointTopic, checkpointPartition = partition });
+        if (activeFlow is null) throw new ArgumentException($"Job '{Id}' has no current data flow.");
+        plan.Delivery(activeFlow, delivery);
         Invalidate();
     }
 
@@ -241,9 +243,9 @@ internal sealed class DataJobGraph(string id, Type argument)
             transaction = participants is null ? null : new
             {
                 mode = "required", participants,
-                isolation = participants.Length == 1 &&
+                isolation = transactionIsolation ?? (participants.Length == 1 &&
                     available[participants[0]].Definition.Kind == DataSourceKind.Sqlite
-                        ? "serializable" : "readCommitted",
+                        ? "serializable" : "readCommitted"),
                 provisionReceipts = participants.All(participant => available[participant].Definition.ProvisionTransactionReceipts)
             }
         };

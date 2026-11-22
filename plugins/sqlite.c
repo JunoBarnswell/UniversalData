@@ -62,6 +62,29 @@ static ud_status failure(sqlite_state *p, int code) {
                                                               : UD_IO,
                           "SQLite operation failed (diagnostic values redacted)");
 }
+static ud_status configure_database(sqlite_state *p) {
+    int rc = sqlite3_exec(p->db, "PRAGMA foreign_keys=ON;PRAGMA main.journal_mode=WAL;"
+                                 "PRAGMA main.synchronous=FULL", NULL, NULL, NULL);
+    if (rc != SQLITE_OK)
+        return failure(p, rc);
+    sqlite3_stmt *statement = NULL;
+    rc = sqlite3_prepare_v2(p->db,
+        "SELECT (SELECT foreign_keys FROM pragma_foreign_keys)=1,"
+        "(SELECT journal_mode FROM pragma_journal_mode)='wal',"
+        "(SELECT synchronous FROM pragma_synchronous)=2", -1, &statement, NULL);
+    if (rc != SQLITE_OK)
+        return failure(p, rc);
+    rc = sqlite3_step(statement);
+    ud_status status = UD_OK;
+    if (rc != SQLITE_ROW)
+        status = failure(p, rc);
+    else if (!sqlite3_column_int(statement, 0) || !sqlite3_column_int(statement, 1) ||
+             !sqlite3_column_int(statement, 2) || sqlite3_compileoption_used("NO_SYNC"))
+        status = p->host.report(p->host.context, UD_UNSUPPORTED,
+                               "SQLite requires foreign key checks and WAL with FULL synchronization");
+    sqlite3_finalize(statement);
+    return status;
+}
 static ud_status initialize(const ud_host_api *h, const char *config, uint32_t n, void **out) {
     *out = NULL;
     sqlite_state *p = h->allocate(h->context, sizeof(*p));
@@ -81,13 +104,16 @@ static ud_status initialize(const ud_host_api *h, const char *config, uint32_t n
     int rc = sqlite3_open_v2(
         path, &p->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL);
     h->deallocate(path);
-    if (rc != SQLITE_OK) {
-        ud_status s = failure(p, rc);
+    ud_status status = rc == SQLITE_OK ? UD_OK : failure(p, rc);
+    if (!status) {
+        sqlite3_busy_handler(p->db, wait_for_writer, p);
+        status = configure_database(p);
+    }
+    if (status) {
         sqlite3_close(p->db);
         h->deallocate(p);
-        return s;
+        return status;
     }
-    sqlite3_busy_handler(p->db, wait_for_writer, p);
     *out = p;
     return UD_OK;
 }

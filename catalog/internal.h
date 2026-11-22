@@ -10,6 +10,8 @@ struct ud_catalog {
     sqlite3 *database;
 #ifdef UD_WITH_POSTGRESQL_CATALOG
     PGconn *postgresql;
+    uint64_t postgresql_deadline;
+    int postgresql_commit_warning;
 #endif
     int remote;
     uint64_t changed;
@@ -20,6 +22,7 @@ ud_status ud_catalog_definition_check(ud_catalog *, const ud_catalog_key *, cons
 ud_status ud_catalog_sql(ud_catalog *, const char *);
 ud_status ud_catalog_begin(ud_catalog *, int election);
 ud_status ud_catalog_finish(ud_catalog *, ud_status);
+ud_status ud_catalog_finish_confirmation(ud_catalog *, ud_status, char **, uint32_t *);
 ud_status ud_catalog_append_document(ud_catalog *, const ud_catalog_key *, ud_string, int conditional,
                                      uint64_t expected, const ud_catalog_lease *, int own_transaction);
 #endif

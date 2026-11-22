@@ -64,10 +64,12 @@ var leadership = app.Services.GetRequiredService<ClusterLeadership>();
 app.Use(async (context, next) =>
 {
     var term = leadership.Current;
-    if (leadership.Enabled && term is not { Ready: true } &&
+    if (leadership.Enabled && term is null &&
         (context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments("/internal/worker-nodes")))
     {
         context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await context.Response.WriteAsJsonAsync(new Result(StatusCode.Transient,
+            new(ErrorSource.Catalog, StatusCode.Transient, "Management authority is unavailable")));
         return;
     }
     using var pin = leadership.Pin(term);
@@ -75,15 +77,20 @@ app.Use(async (context, next) =>
 });
 app.Use(async (context,next) => {
     try { await next(); }
-    catch(UniversalDataException failure) { leadership.CatalogUnavailable(failure); if (context.Response.HasStarted) throw; context.Response.StatusCode = failure.Code == StatusCode.Auth ? 403 :
-        failure.Code is StatusCode.Transient or StatusCode.Io or StatusCode.Busy ? 503 : failure.Code == StatusCode.Fenced ? 409 : 422;
+    catch(UniversalDataException failure) { leadership.CatalogUnavailable(failure); if (context.Response.HasStarted) throw; context.Response.StatusCode = failure.Code switch
+        {
+            StatusCode.Auth => 403,
+            StatusCode.Transient or StatusCode.Io or StatusCode.Busy or StatusCode.Timeout or StatusCode.CommitUnknown => 503,
+            StatusCode.Fenced => 409,
+            _ => 422
+        };
         await context.Response.WriteAsJsonAsync(new Result(failure.Code, failure.Detail ?? new(ErrorSource.Native, failure.Code, failure.Code.ToString()))); }
     catch(Exception error) when(error is ArgumentException or JsonException or FormatException or OverflowException) {
         if (context.Response.HasStarted) throw; context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new Result(StatusCode.Invalid, new(ErrorSource.Native, StatusCode.Invalid, "Invalid request"))); }
     catch(Exception error) when(error is IOException or InvalidDataException or OperationCanceledException or InvalidOperationException) {
         if (context.Response.HasStarted) throw; context.Response.StatusCode = 503; await context.Response.WriteAsJsonAsync(new Result(StatusCode.Io, new(ErrorSource.Worker, StatusCode.Io, "Host operation is unavailable"))); }
 });
-ManagementSecurity.Install(app,policy,identities);
+ManagementSecurity.Install(app, policy, identities, leadership);
 WorkerNodeEndpoint.Map(app, workerNodeTrust);
 app.UseDefaultFiles(); app.UseStaticFiles();
 var api = app.MapGroup("/api").RequireAuthorization();
@@ -176,6 +183,12 @@ api.MapPost("/publications",async (JobPublicationRequest request,HttpContext con
     await InspectValue(context, "validate", prepared.Package, parametersReference: inspectedParameters);
     return Results.Ok(tenant.PublishJob(identity, request, parametersReference));
 });
+api.MapPost("/publications/lookup", (JobPublicationRequest request, HttpContext context, RunDispatcher dispatcher) =>
+{
+    var identity = Identity(context);
+    return dispatcher.For(identity).FindPublication(identity, request) is { } receipt
+        ? Results.Ok(receipt) : Results.NotFound();
+});
 api.MapPost("/tests",async (TestRequest request,HttpContext context,RunDispatcher dispatcher) => {
     var identity=Identity(context);var package=DesignerWorkspace.IsolatedTest(Scope(context),identity,request);
     using var original=JsonDocument.Parse(package.ToJsonString());
@@ -210,6 +223,12 @@ api.MapPost("/deployments",(DeploymentRequest request,HttpContext context,RunDis
 api.MapPost("/deployments/{id}/start",async (string id,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).ActivateDeployment(Identity(context),id,true)));
 api.MapPost("/deployments/{id}/stop",async (string id,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).ActivateDeployment(Identity(context),id,false)));
 api.MapPost("/executions",(RunRequest request,HttpContext context,RunDispatcher dispatcher) => Results.Accepted(value:RunStateView.From(dispatcher.For(Identity(context)).Enqueue(Identity(context),request))));
+api.MapGet("/executions/requests/{requestId}", (string requestId, HttpContext context, RunDispatcher dispatcher) =>
+{
+    var identity = Identity(context);
+    return dispatcher.For(identity).FindExecutionRequest(identity, requestId) is { } accepted
+        ? Results.Ok(RunStateView.From(accepted)) : Results.NotFound();
+});
 api.MapGet("/executions/{ticket}",(string ticket,HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Get(Identity(context),ticket) is { } run ? Results.Ok(dispatcher.For(Identity(context)).View(run)) : Results.NotFound());
 api.MapGet("/executions/{ticket}/members", (string ticket, HttpContext context, RunDispatcher dispatcher) =>
     dispatcher.For(Identity(context)).Members(Identity(context), ticket).Select(run => dispatcher.For(Identity(context)).View(run)));
@@ -246,8 +265,14 @@ api.MapGet("/resources",(HttpContext context) => { var scope = Scope(context); s
     return new { fileRoots = scope.FileRoots,readOnlyRoots = scope.ReadOnlyRoots,networkOrigins = scope.NetworkOrigins,credentialReferences = scope.CredentialFiles.Keys,
         testResources = scope.TestResources ?? [], resources = scope.Resources?.Keys.Where(resource => scope.Identity.Allows("resource.open",resource)) }; });
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" })).AllowAnonymous();
-app.MapGet("/health/ready", (WorkerReservations workers) => workers.Ready && leadership.Ready
+app.MapGet("/health/ready", () => leadership.Ready
     ? Results.Ok(new { status = "ready" }) : Results.StatusCode(503)).AllowAnonymous();
+api.MapGet("/execution-readiness", (string? packageId, string? packageRevision, HttpContext context, RunDispatcher dispatcher) =>
+{
+    var identity = Identity(context);
+    identity.Require("worker.read", "*");
+    return dispatcher.For(identity).ExecutionReadiness(identity, packageId, packageRevision);
+});
 api.MapGet("/workers", (HttpContext context, WorkerReservations workers) =>
 {
     var identity = Identity(context);

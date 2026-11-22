@@ -219,12 +219,7 @@ ud_status ud_mssql_xa_begin(void *state, const ud_transaction_branch *branch) {
         return UD_UNSUPPORTED;
     if (p->transaction || p->branch_id[0] || p->cursor || p->cdc)
         return UD_BUSY;
-    SQLUINTEGER isolation = branch->isolation == UD_ISOLATION_SERIALIZABLE ? SQL_TXN_SERIALIZABLE
-                            : branch->isolation == UD_ISOLATION_REPEATABLE_READ ? SQL_TXN_REPEATABLE_READ
-                                                                              : SQL_TXN_READ_COMMITTED;
-    if (!SQL_SUCCEEDED(SQLSetConnectAttr(p->connection, SQL_ATTR_TXN_ISOLATION,
-                                         (SQLPOINTER)(uintptr_t)isolation, 0)))
-        return ud_odbc_diagnostic(p);
+    UD_TRY(ud_odbc_set_isolation(p, branch->isolation));
     int32_t timeout = 600; /* Bound abandoned unprepared branches; prepared branches remain durable. */
     int result = XA_RMFAIL;
     ud_status status = call(p, NULL, XA_SET_TIMEOUT, 0, &timeout, sizeof(timeout), NULL, &result);

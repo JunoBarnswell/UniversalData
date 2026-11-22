@@ -35,7 +35,9 @@ typedef struct ud_catalog_options {
  * different document is CORRUPT. Tenant is part of each physical identity. */
 UD_API ud_status ud_catalog_open(ud_context *, const ud_catalog_options *, ud_catalog **);
 UD_API ud_status ud_catalog_put(ud_catalog *, const ud_catalog_key *, ud_string json);
-/* PostgreSQL 17 writable endpoint. The logical directory is used for authorization.
+/* PostgreSQL 17 synchronous primary endpoint. The logical directory is used for authorization.
+ * TCP connection strings provide a numeric hostaddr (host may name the TLS service).
+ * A missing synchronized standby makes the Catalog unavailable.
  * create_directory initializes storage for installation, and runtime opens an existing schema.
  * Management election uses Audit key leadership in tenant __ud_cluster.
  * Every other write requires a live leadership token attached to the handle. */
@@ -139,6 +141,11 @@ UD_API ud_status ud_catalog_publish_job(ud_catalog *, const ud_catalog_publicati
 /* Owned canonical JSON, released with ud_free. Missing key returns END. */
 UD_API ud_status ud_catalog_get(ud_catalog *, const ud_catalog_key *, char **json,
                                 uint32_t *length);
+/* Resolve a receipt document (revision 0 selects the latest). For PostgreSQL the
+ * row or its absence must be observed under a live term in the same serialized,
+ * synchronously confirmed Catalog transaction. An unproved observation is not END. */
+UD_API ud_status ud_catalog_get_confirmed(ud_catalog *, const ud_catalog_key *, char **json,
+                                          uint32_t *length);
 /* Owned JSON array of {id,revision}; validates all returned envelopes. */
 UD_API ud_status ud_catalog_list(ud_catalog *, int32_t kind, char **json, uint32_t *length);
 /* Indexed bounded query. Strict native JSON: {kind,id?,afterId?,afterRevision?,

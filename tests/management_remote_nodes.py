@@ -151,6 +151,8 @@ def exercise(dotnet, management, worker, openssl, root, postgres=None):
                                "--node", "standby", "--urls", standby, *cluster_args])
         csrf = call("/api/auth/login", "POST", dict(subject="operator", password=password))["csrf"]
         if postgres:
+            readiness = call("/api/execution-readiness")
+            assert not readiness["ready"] and readiness["reason"] == "NoOnlineWorker", readiness
             active_cookie = next(iter(jar))
             active_csrf = csrf
             csrf = call("/api/auth/login","POST",dict(subject="operator",password=password))["csrf"]
@@ -174,6 +176,8 @@ def exercise(dotnet, management, worker, openssl, root, postgres=None):
                            parameters=json.dumps(dict(payload="survivor")))
             run_state = call("/api/executions","POST",request)
             ticket = run_state["id"]
+            lookup = "/api/executions/requests/" + request["requestId"]
+            assert call(lookup)["id"] == ticket
             assert call("/api/executions","POST",request)["id"] == ticket
             until(lambda: "survivor" in effects)
             running = call("/api/executions/"+ticket)
@@ -194,6 +198,7 @@ def exercise(dotnet, management, worker, openssl, root, postgres=None):
             except urllib.error.HTTPError as denied:
                 assert denied.code == 401, denied.code
             jar.set_cookie(active_cookie)
+            assert call(lookup)["id"] == ticket
             assert call("/api/executions","POST",request)["id"] == ticket
             done = until(lambda: (state if (state := call("/api/executions/"+ticket))["state"] == "Succeeded" else None))
             assert (done["executionId"],done["processId"],done["workerNode"]) == (running["executionId"],running["processId"],running["workerNode"])

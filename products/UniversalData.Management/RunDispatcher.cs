@@ -24,7 +24,7 @@ public sealed class RunDispatcher(HostPolicy root, ProductConfiguration configur
             do
             {
                 var term = leadership.Current;
-                if (leadership.Enabled && term is not { Ready: true }) continue;
+                if (leadership.Enabled && term is null) continue;
                 for (int offset = 0; offset < dispatchers.Length; offset++)
                     dispatchers[(first + offset) % dispatchers.Length].Tick(term,stoppingToken);
                 first = (first + 1) % dispatchers.Length;

@@ -31,7 +31,7 @@ public static class ExecutionFeed
             while(!lifetime.IsCancellationRequested) {
                 // Revalidate the current principal/grants for every page, including permission revocation.
                 identity=context.Identity(identities);identity.Require("execution.read",ticket);
-                var run=tenant.Get(identity,ticket) ?? throw new ArgumentException("Execution was not found");
+                var run=tenant.Get(identity,ticket,confirmed:false) ?? throw new ArgumentException("Execution was not found");
                 scope=root.Bind(identity);
                 using var catalog=scope.OpenCatalog();
                 ulong revision=run.ExecutionId.Length==0?0:catalog.LatestRevision(CatalogKind.Execution,run.ExecutionId);
@@ -49,7 +49,8 @@ public static class ExecutionFeed
                 bool terminal=run.State is "Succeeded" or "Failed" or "Cancelled" or "Stopped" or "RecoveryRequired";
                 if(first||gap||terminal||revision!=executionRevision||run.Revision!=runRevision||page.RootElement.GetArrayLength()>0) {
                     var facts=await tenant.Metrics(identity,ticket);
-                    string payload=JsonSerializer.Serialize(new {run=RunStateView.From(run),facts,events=page.RootElement,gap,source="native-catalog",terminal},HostPolicy.JsonOptions);
+                    string payload=JsonSerializer.Serialize(new {run=tenant.View(run),facts,events=page.RootElement,gap,
+                        source="native-catalog",observedAtMs=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),terminal},HostPolicy.JsonOptions);
                     if(System.Text.Encoding.UTF8.GetByteCount(payload)>8388608)throw new IOException("Observation snapshot exceeds quota");
                     executionRevision=revision;runRevision=run.Revision;first=false;
                     using var write=CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);write.CancelAfter(TimeSpan.FromSeconds(5));

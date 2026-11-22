@@ -66,7 +66,7 @@ ud_status ud_package_requires_journal(const ud_package *package, int32_t *requir
             return UD_OK;
         const ud_json *delivery = ud_member(flow, "delivery");
         if (delivery)
-            return UD_OK; /* Kafka stage/transaction delivery is durable by definition. */
+            return UD_OK; /* An explicit delivery policy keeps the durable execution contract. */
         int flow_source = 0;
         for (uint32_t component_index = 0; component_index < ud_json_size(components);
              component_index++) {

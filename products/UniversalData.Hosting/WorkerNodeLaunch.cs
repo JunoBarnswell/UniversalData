@@ -9,13 +9,13 @@ public sealed record WorkerNodeLaunch(string Ticket, string Tenant, string Subje
     WorkerBudget Budget, WorkerShard? Shard, string[] FileRoots, string[] ReadOnlyRoots, string[] PluginRoots, string[] NetworkOrigins,
     string[] CredentialReferences, Dictionary<string, ConnectionAccess[]>? Resources,
     bool BrokerRestore = false, string? JournalTicket = null, bool GovernProcess = false, KafkaAssignment? Assignment = null,
-    JsonElement? Incremental = null, bool Continuous = false)
+    JsonElement? Incremental = null, bool Continuous = false, string? RecoveryAgentBootId = null)
 {
     public static bool SamplesRows(JsonElement? debug) =>
         debug is { ValueKind: JsonValueKind.Object } settings && settings.TryGetProperty("previewRows", out var rows) &&
         (rows.ValueKind != JsonValueKind.Number || !rows.TryGetUInt32(out var sampleCount) || sampleCount != 0);
 
-    public static WorkerNodeLaunch From(WorkerRequest request, WorkerBudget reservation)
+    public static WorkerNodeLaunch From(WorkerRequest request, WorkerBudget reservation, string? recoveryAgentBootId = null)
     {
         if (request.Mode != "execute" || request.ContractRevision != ProductInfo.WorkerRevision ||
             request.Version != ProductInfo.Protocol || SamplesRows(request.Debug) ||
@@ -30,6 +30,6 @@ public sealed record WorkerNodeLaunch(string Ticket, string Tenant, string Subje
             request.DeploymentRevision, reservation, request.Shard, policy.FileRoots, policy.ReadOnlyRoots, policy.PluginRoots,
             policy.NetworkOrigins, policy.CredentialFiles.Keys.ToArray(), policy.Resources, request.BrokerRestore,
             request.JournalTicket, request.Budget is not null, request.Assignment, request.Incremental,
-            request.Continuous);
+            request.Continuous, recoveryAgentBootId);
     }
 }

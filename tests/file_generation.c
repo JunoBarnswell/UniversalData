@@ -2,6 +2,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef UD_TEST_FSYNC_WRAP
+#include <errno.h>
+#include <sys/stat.h>
+#endif
 #define CHECK(x)                                                                                   \
     do {                                                                                           \
         if (!(x)) {                                                                                \
@@ -14,6 +18,40 @@ typedef struct fixture {
     int cut;
     ud_file_generation *generation;
 } fixture;
+#ifdef UD_TEST_FSYNC_WRAP
+static _Thread_local const char *published_target;
+static _Thread_local struct stat watched_directory;
+int __real_fsync(int);
+int __wrap_fsync(int descriptor) {
+    struct stat info;
+    if (published_target && !fstat(descriptor, &info) && S_ISDIR(info.st_mode) &&
+        info.st_dev == watched_directory.st_dev && info.st_ino == watched_directory.st_ino) {
+        FILE *file = fopen(published_target, "rb");
+        char bytes[5];
+        int matched = file && fread(bytes, 1, sizeof(bytes), file) == 4 &&
+                      !memcmp(bytes, "new\n", 4);
+        if (file)
+            fclose(file);
+        if (matched) {
+            errno = EIO;
+            return -1;
+        }
+    }
+    return __real_fsync(descriptor);
+}
+static ud_status fail_publication_sync(char *target) {
+    char *last_slash = strrchr(target, '/');
+    if (!last_slash)
+        return UD_INVALID;
+    *last_slash = '\0';
+    int result = stat(target, &watched_directory);
+    *last_slash = '/';
+    if (result)
+        return UD_IO;
+    published_target = target;
+    return UD_OK;
+}
+#endif
 static ud_string str(const char *text) {
     return (ud_string){text, (uint32_t)strlen(text)};
 }
@@ -69,8 +107,15 @@ static ud_status invoke(void *user, const ud_component_context *context, ud_stri
                 status = UD_IO;
         }
     }
+#ifdef UD_TEST_FSYNC_WRAP
+    if (!status && state->cut == 3)
+        status = fail_publication_sync(path);
+#endif
     if (!status)
         status = ud_file_generation_publish(generation);
+#ifdef UD_TEST_FSYNC_WRAP
+    published_target = NULL;
+#endif
     if (!status && state->cut == 2)
         _Exit(87);
     if (!status)
@@ -132,9 +177,15 @@ int main(int argc, char **argv) {
     ud_execution *execution = NULL;
     OK(ud_execution_create_json((ud_string){text, (uint32_t)size}, &options, &execution));
     free(text);
-    OK(ud_execution_execute(execution));
+    ud_status result = ud_execution_execute(execution);
+    CHECK(result == (state.cut >= 3 ? UD_COMMIT_UNKNOWN : UD_OK));
+    if (state.cut == 4) {
+        ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION};
+        OK(ud_execution_error_details(execution, &detail));
+        CHECK(detail.cause == UD_CORRUPT);
+    }
     OK(ud_execution_destroy(execution));
     OK(ud_registry_destroy(registry));
     OK(ud_context_destroy(context));
-    return 0;
+    return result == UD_COMMIT_UNKNOWN ? 88 : 0;
 }

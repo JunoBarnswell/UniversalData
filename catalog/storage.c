@@ -36,9 +36,10 @@ ud_status catalog_sqlite_status(int rc) {
 
 ud_status ud_catalog_sql(ud_catalog *catalog, const char *sql) {
 #ifdef UD_WITH_POSTGRESQL_CATALOG
-    if (catalog->postgresql) {
-        PGresult *result = PQexec(catalog->postgresql, sql);
-        ud_status status = catalog_postgresql_status(catalog->postgresql, result);
+    if (catalog->remote) {
+        PGresult *result = NULL;
+        ud_status status = catalog_postgresql_query(catalog, sql, 0, NULL, NULL, NULL, NULL,
+                                                     &result);
         PQclear(result);
         return status;
     }
@@ -54,7 +55,11 @@ ud_status catalog_prepare(ud_catalog *catalog, const char *sql, catalog_statemen
     statement->catalog = catalog;
     ud_status status = UD_OK;
 #ifdef UD_WITH_POSTGRESQL_CATALOG
-    if (catalog->postgresql) {
+    if (catalog->remote) {
+        if (!catalog->postgresql) {
+            catalog_finalize(statement);
+            return UD_TRANSIENT;
+        }
         statement->sql = ud_strdup_n(catalog->ctx, sql, strlen(sql));
         if (!statement->sql)
             status = UD_RESOURCE;
@@ -142,9 +147,14 @@ ud_status catalog_step(catalog_statement *statement) {
                 lengths[i] = statement->parameters[i].length;
                 formats[i] = statement->parameters[i].format;
             }
-            statement->result = PQexecParams(statement->catalog->postgresql, statement->sql,
-                statement->count, statement->types, values, lengths, formats, 0);
-            UD_TRY(catalog_postgresql_status(statement->catalog->postgresql, statement->result));
+            PGresult *result = NULL;
+            ud_status status = catalog_postgresql_query(statement->catalog, statement->sql,
+                statement->count, statement->types, values, lengths, formats, &result);
+            if (status) {
+                PQclear(result);
+                return status;
+            }
+            statement->result = result;
             const char *count = PQcmdTuples(statement->result);
             statement->catalog->changed = *count ? strtoull(count, NULL, 10) : 0;
         }

@@ -238,12 +238,20 @@ ud_status ud_catalog_find_publication(ud_catalog *catalog, ud_string request_id,
         return UD_INVALID;
     ud_catalog_publication_request request = {.request_id = request_id, .subject = subject,
                                                .fingerprint = fingerprint};
+    *receipt = NULL;
+    *length = 0;
     ud_catalog_key identity;
     char identity_id[256];
     UD_TRY(publication_identity(catalog, &request, &identity, identity_id));
+    UD_TRY(publication_grant(catalog, UD_ACCESS_READ));
+    if (catalog->remote)
+        UD_TRY(ud_catalog_begin(catalog, 0));
     int found = 0;
     ud_status status = publication_existing(catalog, &request, &identity, receipt, length, &found);
-    return status ? status : found ? UD_OK : UD_END;
+    if (!status && !found)
+        status = UD_END;
+    return catalog->remote ? ud_catalog_finish_confirmation(catalog, status, receipt, length)
+                           : status;
 }
 
 static ud_status publication_append(ud_catalog *catalog, int kind, ud_string id,
@@ -269,15 +277,8 @@ ud_status ud_catalog_publish_job(ud_catalog *catalog,
 
     int found = 0;
     ud_status status = publication_existing(catalog, request, &identity, receipt, length, &found);
-    if (!status && found) {
-        status = ud_catalog_finish(catalog, UD_OK);
-        if (status) {
-            ud_free(*receipt);
-            *receipt = NULL;
-            *length = 0;
-        }
-        return status;
-    }
+    if ((!status && found) || status == UD_FENCED)
+        return ud_catalog_finish_confirmation(catalog, status, receipt, length);
 
     uint64_t package_revision = request->expected_package_revision + 1;
     ud_catalog_key deployment_state = publication_key(UD_CATALOG_AUDIT,

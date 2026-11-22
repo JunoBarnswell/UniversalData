@@ -186,6 +186,32 @@ static ud_status bind_stage(mq_source *source, const ud_component_context *conte
     return status;
 }
 
+static ud_status event_receipt_identity(ud_context *memory, ud_string scope, ud_string name,
+                                        ud_id *out) {
+    /* The inbox key must survive a Package protocol upgrade. The Package
+     * version is part of the receipt digest, so an old event then conflicts. */
+    static const char domain[] = "UniversalData.EventReceipt.v1";
+    ud_bytes key = {.ctx = memory};
+    ud_status status = ud_bytes_put(&key, domain, sizeof(domain) - 1);
+    if (!status)
+        status = ud_put_string(&key, scope.data, scope.length);
+    if (!status)
+        status = ud_put_string(&key, name.data, name.length);
+    if (!status) {
+        uint8_t digest[32];
+        ud_hash(key.data, key.size, digest);
+        *out = (ud_id){0};
+        for (size_t index = 0; index < 8; index++) {
+            out->high = (out->high << 8) | digest[index];
+            out->low = (out->low << 8) | digest[index + 8];
+        }
+        if (!out->high && !out->low)
+            status = UD_CORRUPT;
+    }
+    ud_bytes_clear(&key);
+    return status;
+}
+
 static ud_status prepare(void *user, const ud_component_context *context, ud_string text,
                          const ud_batch *const *inputs, const ud_batch *const *outputs,
                          void **out) {
@@ -223,9 +249,6 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
         if (!source->deliveries)
             status = UD_RESOURCE;
     }
-    if (!status)
-        status = ud_id_make(context->memory, settings.connection, settings.target.name,
-                            &source->identity);
     if (!status && settings.format == UD_MQ_AVRO)
         status = ud_schema_registry_open(context, settings.registry_connection, settings.subject,
                                          settings.schema_version, &source->registry);
@@ -237,6 +260,20 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
         status = ud_activation_acquire_connection(context->activation, settings.connection,
                                                   capabilities, &source->lease);
     }
+    ud_string source_scope = settings.connection;
+    if (!status && context->activation->event_receipt_binding) {
+        status = ud_connection_lease_require_connector(source->lease,
+                                                       "org.universaldata.connector.rabbitmq");
+        if (status == UD_UNSUPPORTED)
+            status = ud_fail(context->memory, status, "eventReceipt requires a RabbitMQ queue");
+        if (!status)
+            status = ud_connection_lease_resource(source->lease, &source_scope);
+    }
+    if (!status)
+        status = context->activation->event_receipt_binding
+                     ? event_receipt_identity(context->memory, source_scope, settings.target.name,
+                                               &source->identity)
+                     : ud_id_make(context->memory, source_scope, settings.target.name, &source->identity);
     if (!status)
         status = assigned ? ud_connection_lease_message_subscribe_partition(source->lease,&subscription,assigned->start_offset)
                           : ud_connection_lease_message_subscribe(source->lease,&subscription);
@@ -248,6 +285,12 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
 }
 
 static ud_status source_position(mq_source *source, const ud_message *message, ud_row_info *out) {
+    int event_receipt = source->context.activation->event_receipt_binding != NULL;
+    if (event_receipt && (!message->id.length || !message->id.data || message->partition != -1 ||
+                          message->offset != -1 || memchr(message->id.data, 0, message->id.length) ||
+                          !ud_utf8_valid(message->id.data, message->id.length)))
+        return ud_fail(source->context.memory, UD_QUALITY,
+                       "eventReceipt requires a producer-assigned RabbitMQ message ID");
     char scope[33], partition[28];
     ud_id_format(source->identity, scope);
     ud_id identity = source->identity;
@@ -257,9 +300,15 @@ static ud_status source_position(mq_source *source, const ud_message *message, u
         UD_TRY(ud_id_make(source->context.memory, (ud_string){scope, 32},
                           (ud_string){partition, (uint32_t)size}, &identity));
         position = (uint64_t)message->offset;
-    } else if (message->id.length)
-        UD_TRY(ud_id_make(source->context.memory, (ud_string){scope, 32}, message->id, &identity));
-    else {
+    } else if (message->id.length) {
+        ud_string identity_scope = {scope, 32};
+        ud_status status = event_receipt
+                               ? event_receipt_identity(source->context.memory, identity_scope,
+                                                        message->id, &identity)
+                               : ud_id_make(source->context.memory, identity_scope, message->id,
+                                            &identity);
+        UD_TRY(status);
+    } else {
         int size = snprintf(partition, sizeof(partition), "epoch-%llu",
                              (unsigned long long)source->epoch);
         UD_TRY(ud_id_make(source->context.memory, (ud_string){scope, 32},
@@ -390,8 +439,9 @@ static ud_status step(void *instance, const ud_component_event *event) {
             }
         }
         if (!status && data) {
-            ud_status conversion = ud_mq_decode(&message, source->format, source->registry,
-                                                 batch, &column);
+            ud_status conversion = ud_mq_decode(&message, source->format,
+                source->context.activation->event_receipt_binding != NULL,
+                source->registry, batch, &column);
             if (!conversion)
                 status = ud_batch_set_row_info(batch, batch->rows - 1, &provenance);
             else if (source->error_policy == UD_ERROR_FAIL || !ud_record_error_recoverable(conversion))

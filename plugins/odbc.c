@@ -46,6 +46,8 @@ static ud_status odbc_status(odbc_state *p) {
         return UD_CANCELLED;
     if (!strcmp(p->sqlstate, "HY001"))
         return UD_RESOURCE;
+    if (!strcmp(p->sqlstate, "HYC00") || !strcmp(p->sqlstate, "IM001"))
+        return UD_UNSUPPORTED;
     return UD_IO;
 }
 static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
@@ -821,21 +823,46 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
     }
     return UD_OK;
 }
-ud_status ud_odbc_begin(void *state, int32_t isolation) {
-    odbc_state *p = state;
-    if (p->transaction || p->branch_id[0])
-        return UD_INVALID;
+ud_status ud_odbc_set_isolation(odbc_state *p, int32_t isolation) {
     SQLUINTEGER level = isolation == UD_ISOLATION_SERIALIZABLE      ? SQL_TXN_SERIALIZABLE
                         : isolation == UD_ISOLATION_REPEATABLE_READ ? SQL_TXN_REPEATABLE_READ
                         : isolation == UD_ISOLATION_READ_COMMITTED  ? SQL_TXN_READ_COMMITTED
                                                                     : 0;
     if (!level)
         return UD_INVALID;
+    UD_TRY(ud_odbc_control(p));
     if (!SQL_SUCCEEDED(SQLSetConnectAttr(p->connection, SQL_ATTR_TXN_ISOLATION,
-                                         (SQLPOINTER)(uintptr_t)level, 0)) ||
-        !SQL_SUCCEEDED(SQLSetConnectAttr(p->connection, SQL_ATTR_AUTOCOMMIT,
+                                         (SQLPOINTER)(uintptr_t)level, 0)))
+        return ud_odbc_diagnostic(p);
+    /* SQL_SUCCESS_WITH_INFO may report that the driver substituted a value. */
+    SQLUINTEGER effective = 0;
+    if (!SQL_SUCCEEDED(SQLGetConnectAttr(p->connection, SQL_ATTR_TXN_ISOLATION,
+                                         &effective, sizeof(effective), NULL)))
+        return ud_odbc_diagnostic(p);
+    return effective == level
+               ? UD_OK
+               : p->host.report(p->host.context, UD_UNSUPPORTED,
+                                "ODBC driver did not apply the requested transaction isolation");
+}
+ud_status ud_odbc_begin(void *state, int32_t isolation) {
+    odbc_state *p = state;
+    if (p->transaction || p->branch_id[0])
+        return UD_INVALID;
+    UD_TRY(ud_odbc_set_isolation(p, isolation));
+    if (!SQL_SUCCEEDED(SQLSetConnectAttr(p->connection, SQL_ATTR_AUTOCOMMIT,
                                          (SQLPOINTER)SQL_AUTOCOMMIT_OFF, 0)))
-        return failure(p, SQL_HANDLE_DBC, p->connection);
+        return ud_odbc_diagnostic(p);
+    SQLUINTEGER autocommit = SQL_AUTOCOMMIT_ON;
+    if (!SQL_SUCCEEDED(SQLGetConnectAttr(p->connection, SQL_ATTR_AUTOCOMMIT,
+                                         &autocommit, sizeof(autocommit), NULL))) {
+        p->broken = 1;
+        return ud_odbc_diagnostic(p);
+    }
+    if (autocommit != SQL_AUTOCOMMIT_OFF) {
+        p->broken = 1;
+        return p->host.report(p->host.context, UD_UNSUPPORTED,
+                              "ODBC driver did not disable autocommit");
+    }
     p->transaction = 1;
     return UD_OK;
 }

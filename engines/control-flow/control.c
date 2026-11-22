@@ -80,7 +80,7 @@ static ud_status control_bind(ud_activation *a, const ud_json *tasks, const ud_j
     p->concurrency = ud_execution_concurrency(a);
     if (!p->concurrency)
         return UD_SCHEMA;
-    if (ud_transaction_active(a) || a->transaction_serial)
+    if (ud_transaction_active(a) || a->transaction_isolation)
         p->concurrency = 1;
     ud_context *ctx = a->execution->ctx;
     p->edges = ud_alloc(ctx, (size_t)(p->edge_count + 1) * sizeof(*p->edges));
@@ -196,7 +196,7 @@ ud_status ud_control_validate(ud_activation *e, const ud_json *flow, uint32_t de
                                     .depth = parent->depth,
                                     .parallel = parent->parallel || parallel,
                                     .transaction = parent->transaction,
-                                    .transaction_serial = parent->transaction_serial,
+                                    .transaction_isolation = parent->transaction_isolation,
                                     .transaction_epoch = parent->transaction_epoch,
                                     .transaction_participants = parent->transaction_participants};
         atomic_init(&validation.cancelled, 0);
@@ -233,7 +233,7 @@ ud_status ud_control_validate(ud_activation *e, const ud_json *flow, uint32_t de
         }
         if (!s)
             s = ud_transaction_enter(e, ud_member(task, "transaction"), 1);
-        if (!s && e->transaction_serial && ud_member(config, "connection")) {
+        if (!s && e->transaction_isolation && ud_member(config, "connection")) {
             ud_json *bound = NULL;
             s = ud_bound_config(e, config, &bound);
             ud_string connection = {0};
@@ -382,7 +382,7 @@ ud_status ud_control_iteration(ud_activation *e, const ud_json *children, uint64
                                .depth = e->depth,
                                .parallel = e->parallel,
                                .transaction = e->transaction,
-                               .transaction_serial = e->transaction_serial,
+                               .transaction_isolation = e->transaction_isolation,
                                .transaction_epoch = e->transaction_epoch,
                                .transaction_participants = e->transaction_participants,
                                .event_depth = e->event_depth};
@@ -415,7 +415,7 @@ ud_status ud_control_handler(ud_activation *e, const ud_json *flow, const char *
                              .depth = e->depth,
                              .parallel = e->parallel,
                              .transaction = e->transaction,
-                             .transaction_serial = e->transaction_serial,
+                             .transaction_isolation = e->transaction_isolation,
                              .transaction_epoch = e->transaction_epoch,
                              .transaction_participants = e->transaction_participants,
                              .event_depth = e->event_depth + 1};
@@ -711,7 +711,7 @@ static ud_status init_task(ud_activation *parent, const ud_json *definition, tas
     a->http_response_headers = (ud_string){0};
     a->http_status = 0;
     a->transaction = parent->transaction;
-    a->transaction_serial = parent->transaction_serial;
+    a->transaction_isolation = parent->transaction_isolation;
     a->transaction_epoch = parent->transaction_epoch;
     a->transaction_participants = parent->transaction_participants;
     atomic_init(&a->cancelled, 0);
@@ -787,6 +787,8 @@ static void record_task(task_run *run, int32_t state, int pass, uint64_t start, 
         (unsigned long long)(ud_now_ms() - start), (unsigned long long)(ud_thread_cpu_ns() - cpu));
     if (!status)
         status = ud_bytes_put(&item, fields, (size_t)n);
+    if (!status)
+        status = ud_transaction_describe(&run->activation, &item);
     ud_string headers = run->activation.http_response_headers;
     if (!status && run->activation.http_status) {
         n = snprintf(fields, sizeof(fields), ",\"httpStatus\":%d", run->activation.http_status);
