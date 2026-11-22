@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Box,
+  ChartNoAxesCombined,
   Play,
   List,
   CalendarDays,
@@ -16,8 +17,9 @@ import { Executions } from "./Executions";
 import { Jobs } from "./Jobs";
 import { Workers } from "./Workers";
 import { Projects } from "./Projects";
+import { Analysis } from "./features/analysis/Analysis";
 import type { Component } from "./model";
-type Page = "projects" | "designer" | "runs" | "logs" | "jobs" | "workers";
+type Page = "analysis" | "projects" | "designer" | "runs" | "logs" | "jobs" | "workers";
 export default function App() {
   return (
     <Authentication>
@@ -31,11 +33,18 @@ export default function App() {
   );
 }
 function AuthenticatedApp({ session }: { session: Session }) {
-  const [page, setPage] = useState<Page>("projects"),
-    [components, setComponents] = useState<Component[]>([]),
-    [error, setError] = useState("");
+  const canAnalyze = session.grants.some(({ permission }) => permission === "*" || permission === "analysis.read");
+  const canReadComponents = session.grants.some(({ permission, resource }) =>
+    (permission === "*" || permission === "component.read") && resource === "*");
+  const analysisOnly = canAnalyze && !session.grants.some(({ permission }) =>
+    permission === "*" || /^(component|package|deployment|execution|job|logs|worker)\./.test(permission));
+  const [page, setPage] = useState<Page>(() =>
+    analysisOnly || canAnalyze && window.location.pathname.split("/")[1] === "analysis" ? "analysis" : "projects");
+  const [components, setComponents] = useState<Component[]>([]);
+  const [error, setError] = useState("");
   const workspace = useWorkspaces();
   useEffect(() => {
+    if (!canReadComponents) return;
     const controller = new AbortController();
     api<Component[]>("/components", { signal: controller.signal })
       .then(setComponents)
@@ -43,8 +52,14 @@ function AuthenticatedApp({ session }: { session: Session }) {
         if (!controller.signal.aborted) setError(String(error));
       });
     return () => controller.abort();
-  }, []);
+  }, [canReadComponents]);
+  function navigate(next: Page) {
+    if (next === "analysis" && page !== "analysis") window.history.replaceState(null, "", "/analysis");
+    if (next !== "analysis" && page === "analysis") window.history.replaceState(null, "", "/");
+    setPage(next);
+  }
   const items: { key: Page; label: string; icon: typeof Box }[] = [
+    { key: "analysis", label: "我的分析", icon: ChartNoAxesCombined },
     { key: "projects", label: "项目", icon: FolderOpen },
     { key: "designer", label: "设计工作台", icon: Workflow },
     { key: "runs", label: "执行", icon: Play },
@@ -55,16 +70,16 @@ function AuthenticatedApp({ session }: { session: Session }) {
   return (
     <div className="application">
       <header className="main-header">
-        <button className="brand" onClick={() => setPage("projects")}>
+        <button className="brand" onClick={() => navigate(analysisOnly ? "analysis" : "projects")}>
           <Box size={25} />
           <strong>UniversalData</strong>
         </button>
         <nav aria-label="主导航">
-          {items.map(({ key, label, icon: Icon }) => (
+          {items.filter((item) => item.key === "analysis" ? canAnalyze : !analysisOnly).map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               className={page === key ? "active" : ""}
-              onClick={() => setPage(key)}
+              onClick={() => navigate(key)}
             >
               <Icon size={16} />
               {label}
@@ -82,6 +97,7 @@ function AuthenticatedApp({ session }: { session: Session }) {
           </button>
         </div>
       ) : null}
+      {page === "analysis" && <Analysis />}
       {page === "projects" ? (
         <Projects
           open={(version) => {
@@ -98,14 +114,14 @@ function AuthenticatedApp({ session }: { session: Session }) {
           }}
         />
       ) : null}
-      <div className="designer-page" hidden={page !== "designer"}>
+      {!analysisOnly && <div className="designer-page" hidden={page !== "designer"}>
         <Workspace
           visible={page === "designer"}
           components={components}
           workspace={workspace}
           onExecution={() => setPage("runs")}
         />
-      </div>
+      </div>}
       {page === "runs" || page === "logs" ? (
         <Executions logsOnly={page === "logs"} />
       ) : page === "jobs" ? (

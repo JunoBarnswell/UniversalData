@@ -87,7 +87,8 @@ struct ud_xlsx_reader {
     uint32_t string_page;
     char *sheet, *relation, *sheet_path;
     int date1904, header, formula_policy, parse_kind, inside_text, inside_si, inside_value, formula,
-        cell_error, row_error, validate_header;
+        cell_error, row_error, validate_header, strict_table;
+    uint8_t *text_columns;
     uint32_t header_fields;
     uint32_t first_col, last_col, first_row, last_row, row_number, cell_column, cell_style,
         row_last_column, styles[4096], style_count, current_style;
@@ -595,6 +596,8 @@ static ud_status cell_value(ud_xlsx_reader *r, const char *type, uint32_t target
     const ud_field *f = &r->schema->column[target].field;
     ud_value raw;
     UD_TRY(cell_text(r, type, &raw));
+    if (r->formula && r->formula_policy == 3)
+        return UD_QUALITY;
     if (r->formula && !r->cell.size) {
         r->missing_formula++;
         if (r->formula_policy == 2) {
@@ -610,6 +613,8 @@ static ud_status cell_value(ud_xlsx_reader *r, const char *type, uint32_t target
     ud_bytes decoded = {.ctx = r->ctx, .limit = (size_t)r->max_string};
     ud_status s = UD_OK;
     int string = type && (!strcmp(type, "s") || !strcmp(type, "str") || !strcmp(type, "inlineStr"));
+    if (r->text_columns && r->text_columns[target] && !string)
+        return UD_QUALITY;
     if (string) {
         s = ooxml_text(r->ctx, raw.text, raw.text_length, &decoded);
         raw.text = (char *)decoded.data;
@@ -820,6 +825,10 @@ static void XMLCALL start(void *user, const char *qualified, const char **atts) 
         if (t && (strstr(t, "macroEnabled") || strstr(t, "vbaProject")))
             abort_xml(r, UD_UNSUPPORTED);
     } else if (r->parse_kind == 5) {
+        if (r->strict_table && !strcmp(name, "mergeCell")) {
+            abort_xml(r, UD_INCOMPATIBLE);
+            return;
+        }
         if (!strcmp(name, "row")) {
             uint32_t row = decimal(attribute(atts, "r"));
             if (!row)
@@ -928,6 +937,11 @@ static void XMLCALL end(void *user, const char *qualified) {
             r->inside_value = 0;
         if (!strcmp(name, "c")) {
             r->cell_open = 0;
+            if (r->strict_table && r->cell_column > r->last_col &&
+                (r->cell.size || r->formula || r->cell_error)) {
+                abort_xml(r, UD_INCOMPATIBLE);
+                return;
+            }
             if (r->validate_header && r->header && r->row_number == r->first_row &&
                 r->cell_column >= r->first_col && r->cell_column <= r->last_col) {
                 const ud_field *field = &r->schema->column[r->cell_column - r->first_col].field;
@@ -1148,10 +1162,33 @@ ud_status ud_xlsx_reader_open(ud_context *ctx, const char *path, const ud_field 
         }
     }
     r->header = named(member(r->config, "header"), "true");
+    r->strict_table = named(member(r->config, "strictTable"), "true");
+    r->validate_header = r->strict_table;
+    if (r->strict_table && (!r->header || member(r->config, "range")))
+        s = UD_SCHEMA;
+    const ud_json *text_columns = member(r->config, "textColumns");
+    if (!s && text_columns) {
+        if (ud_json_kind(text_columns) != UD_JSON_ARRAY || ud_json_size(text_columns) > columns)
+            s = UD_SCHEMA;
+        if (!s) {
+            r->text_columns = ud_alloc(ctx, columns);
+            if (!r->text_columns)
+                s = UD_RESOURCE;
+        }
+        for (uint32_t i = 0; !s && i < ud_json_size(text_columns); i++) {
+            uint64_t column;
+            s = uint_config(ud_json_at(text_columns, i), UINT64_MAX, &column);
+            if (!s && (column >= columns || r->text_columns[column]))
+                s = UD_SCHEMA;
+            if (!s)
+                r->text_columns[column] = 1;
+        }
+    }
     const ud_json *fp = member(r->config, "formulaPolicy");
     r->formula_policy = !fp || named(fp, "fail") ? 0
                         : named(fp, "redirect")  ? 1
                         : named(fp, "null")      ? 2
+                        : named(fp, "reject")    ? 3
                                                  : -1;
     if (r->formula_policy < 0)
         s = UD_SCHEMA;
@@ -1361,6 +1398,7 @@ void ud_xlsx_reader_close(ud_xlsx_reader *r) {
     ud_free(r->sheet_path);
     ud_bytes_clear(&r->content);
     ud_bytes_clear(&r->cell);
+    ud_free(r->text_columns);
     ud_bytes_clear(&r->formula_text);
     ud_bytes_clear(&r->sheets);
     ud_json_destroy(r->config);

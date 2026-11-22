@@ -157,3 +157,11 @@ Native Binder 会报告源重放能力、端口的 `Append`、`Upsert` 或 `Retr
 `AddIceberg` 注册 REST Catalog 与文件或 S3 存储范围。S3 用 `AddS3` 注册 HTTPS endpoint、bucket、prefix 与宿主凭据引用，并指定该命名存储。宿主凭据的 `awsSigV4` 使用 `aws:amz:<region>:s3`，私有 CA 可通过 `caConnection` 引用已授权文件。`FromIceberg<T>` 可按快照读取，`ToIceberg` 以 REST Catalog 发布的 Iceberg v2 快照确认写入。恢复按执行标识和数据摘要核对快照。事件时间、去重、有界关联、维表查找和窗口都使用 Native 算子。
 
 已有 Native `Package` 可直接传给 `DataClient` 的 `ValidateAsync`、`PreviewAsync`、`RunAsync`、`StartAsync`、`ResumeAsync` 和 `PublishAsync`。使用 `TestMessageConnectionAsync` 验证已登记的消息连接。 [公共 C ABI](architecture/public-c-abi.md)
+
+## 我的分析
+
+Studio 的「我的分析」和 `EtlManagementClient` 使用同一组 `/api/analysis` 接口。创建分析需要 `analysis.read` 和 `analysis.write`，已保存的草稿和报表按租户及所有者读取。宿主可在租户策略的 `analysisSources` 中登记已有的单表 Iceberg 输出。每项填写 `id`、`name`、`catalog`、`storage`、`namespace`、`table`、`snapshotId`、`schema`、`runReceipt` 和 `dataAsOf`。连接引用沿用宿主授权与凭据解析。读取要求 `analysis.source` 及相应连接权限。快照 ID 在服务接口中使用十进制字符串。
+
+用户可从订单样例、CSV、单工作表 Excel 或已登记的固定快照建模。文件限制为 50 MiB、10 万条记录和 64 列。Excel 使用一行唯一表头，公式需先转换为值，订单号需保存在文本单元格中。金额使用 Decimal，币种和行金额含义由用户确认。
+
+发布在 Native Package 中完成全量核对和原子文件提交。各种来源都生成同一种 Native NDJSON 版本，Catalog 通过条件更新发布指针。重复提交时沿用原操作 ID 和期望版本。`QueryAnalysisAsync` 返回固定发布版本的查询上下文，`DrillAnalysisAsync` 和 `ExportAnalysisAsync` 使用该上下文并重新检查权限。集群部署需为可接管 Management 的节点提供相同的分析资产存储视图。

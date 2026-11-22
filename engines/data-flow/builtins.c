@@ -593,7 +593,8 @@ static const char *configuration_schema(int kind) {
                "\"type\":\"string\"},\"range\":{\"type\":\"string\"},\"header\":{\"type\":"
                "\"boolean\"},\"datePolicy\":{\"type\":\"string\"},\"formulaPolicy\":{\"type\":"
                "\"string\"},\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":"
-               "\"boolean\"},\"batchSize\":{\"type\":\"integer\"},\"maxCompressedBytes\":{\"type\":"
+               "\"boolean\"},\"strictTable\":{\"type\":\"boolean\"},\"textColumns\":{\"type\":\"array\"},"
+               "\"batchSize\":{\"type\":\"integer\"},\"maxCompressedBytes\":{\"type\":"
                "\"integer\"},\"maxDecompressedBytes\":{\"type\":\"integer\"},\"maxEntries\":{"
                "\"type\":\"integer\"},\"maxCells\":{\"type\":\"integer\"},\"maxStringBytes\":{"
                "\"type\":\"integer\"},\"ordering\":{\"type\":\"object\"}},\"additionalProperties\":"
@@ -764,6 +765,7 @@ ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_registry_register(registry, &task));
     UD_TRY(ud_transforms_register(registry));
     UD_TRY(ud_quality_component_register(registry));
+    UD_TRY(ud_analysis_component_register(registry));
     UD_TRY(ud_cache_components_register(registry));
     UD_TRY(ud_enumerators_register(registry));
     UD_TRY(ud_filesystem_register(registry));

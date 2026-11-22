@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace UniversalData;
 
 /// <summary>Uses the authenticated management API that Studio uses. Configure credentials on the supplied HttpClient.</summary>
-public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
+public sealed partial class EtlManagementClient(HttpClient http, string? csrf = null)
 {
     public ValueTask<Result<JobPublicationReceipt>> PublishJobAsync(JobPublicationRequest request,
         CancellationToken cancellation = default) =>
@@ -73,7 +73,7 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
 
     private async ValueTask<Result<T>> Send<T>(HttpMethod method, string path, object? body,
         CancellationToken cancellation, bool expectValue = true, bool notFoundIsEnd = false,
-        bool mutation = false, string? mutationId = null)
+        bool mutation = false, string? mutationId = null, Func<HttpContent, CancellationToken, Task<T?>>? read = null)
     {
         mutation |= mutationId is not null;
         if (cancellation.IsCancellationRequested)
@@ -84,14 +84,15 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
             if (csrf is not null)
                 request.Headers.Add("X-UD-CSRF", csrf);
             if (body is not null)
-                request.Content = JsonContent.Create(body, options: WorkerProtocol.Json);
+                request.Content = body as HttpContent ?? JsonContent.Create(body, options: WorkerProtocol.Json);
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation)
                 .ConfigureAwait(false);
             if (response.IsSuccessStatusCode)
             {
                 if (!expectValue) return new(StatusCode.Ok, default);
-                var value = await response.Content.ReadFromJsonAsync<T>(WorkerProtocol.Json, cancellation)
-                    .ConfigureAwait(false);
+                var value = read is null
+                    ? await response.Content.ReadFromJsonAsync<T>(WorkerProtocol.Json, cancellation).ConfigureAwait(false)
+                    : await read(response.Content, cancellation).ConfigureAwait(false);
                 if (value is null or JsonElement { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined })
                     return mutation ? Unconfirmed<T>(mutationId) :
                         new(StatusCode.Protocol, default, new(ErrorSource.Http, StatusCode.Protocol, "Management returned an empty result"));
