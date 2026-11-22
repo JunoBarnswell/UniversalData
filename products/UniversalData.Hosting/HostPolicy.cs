@@ -4,7 +4,8 @@ using System.Text.Json.Serialization;
 namespace UniversalData.Hosting;
 
 public sealed record TenantResources(string[] FileRoots, string[] NetworkOrigins, string[] PluginRoots,
-    string[] CredentialReferences, Dictionary<string, ConnectionAccess[]>? Resources = null, string[]? ReadOnlyRoots = null, string[]? TestResources = null);
+    string[] CredentialReferences, Dictionary<string, ConnectionAccess[]>? Resources = null, string[]? ReadOnlyRoots = null, string[]? TestResources = null,
+    AnalysisIcebergSource[]? AnalysisSources = null);
 
 /// <summary>One host resource ceiling, narrowed by the authenticated tenant and subject before Native binding.</summary>
 public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string[] NetworkOrigins,
@@ -19,6 +20,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     public string[] ReadOnlyRoots { get; init; } = [];
     [JsonIgnore] public bool Isolated { get; init; }
     [JsonIgnore] public string? StateDirectory { get; init; }
+    [JsonIgnore] internal AnalysisFileScope? AnalysisFiles { get; init; }
     [JsonIgnore] internal ClusterCatalog? Cluster { get; init; }
     public static HostPolicy Load(string path)
     {
@@ -93,6 +95,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
         // A parameter/connection cannot turn a product-private path into a data source.
         if (Path.IsPathFullyQualified(resource)) {
             try { HostFiles.NoLinks(resource); } catch { return false; }
+            if (AnalysisFiles?.Allows(this, resource, access) == true) return true;
             if (Inside(resource, DataDirectory) || CredentialFiles.Values.Any(path => Inside(resource,path)) || IdentityFile is not null && resource == IdentityFile) return false;
         }
         foreach(string root in FileRoots.Concat(ReadOnlyRoots)) {

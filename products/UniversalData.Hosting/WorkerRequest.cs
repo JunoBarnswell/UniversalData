@@ -9,4 +9,4 @@ public sealed record WorkerRequest(int Version, string Ticket, string Mode, Host
     string ControlReference = "", bool Isolated = false, JsonElement? BindingSnapshot = null, string? DeploymentId = null, ulong DeploymentRevision = 0,
     int ContractRevision = ProductInfo.WorkerRevision, WorkerBudget? Budget = null, WorkerShard? Shard = null, bool BrokerRestore = false, string? JournalTicket = null,
     KafkaAssignment? Assignment = null, WorkerSourceAdmission? SourceAdmission = null,
-    JsonElement? Incremental = null, bool Continuous = false);
+    JsonElement? Incremental = null, bool Continuous = false, AnalysisFileScope? AnalysisFiles = null);

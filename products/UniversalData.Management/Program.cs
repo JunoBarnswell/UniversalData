@@ -57,6 +57,7 @@ builder.Services.AddSingleton(services => new ClusterLeadership(cluster, nodeId,
 builder.Services.AddHostedService(services => services.GetRequiredService<ClusterLeadership>());
 builder.Services.AddSingleton<WorkerNodeDirectory>();
 builder.Services.AddSingleton<WorkerReservations>();
+builder.Services.AddSingleton<AnalysisWorkspace>();
 builder.Services.AddSingleton<RunDispatcher>(); builder.Services.AddHostedService(services => services.GetRequiredService<RunDispatcher>());
 ManagementSecurity.Configure(builder,policy,identities,clusterState);
 var app = builder.Build();
@@ -94,6 +95,7 @@ ManagementSecurity.Install(app, policy, identities, leadership);
 WorkerNodeEndpoint.Map(app, workerNodeTrust);
 app.UseDefaultFiles(); app.UseStaticFiles();
 var api = app.MapGroup("/api").RequireAuthorization();
+app.Services.GetRequiredService<AnalysisWorkspace>().Map(api);
 HostIdentity Identity(HttpContext context) => context.Identity(identities);
 HostPolicy Scope(HttpContext context) => policy.Bind(Identity(context));
 async Task<JsonElement> InspectValue(HttpContext context,string mode,JsonElement package,JsonElement? payload = null,

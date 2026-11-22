@@ -19,9 +19,15 @@ using(var envelope=JsonDocument.Parse(input))
 var request = JsonSerializer.Deserialize<WorkerRequest>(input,HostPolicy.JsonOptions) ?? throw new InvalidDataException("Invalid Worker request");
 if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticket,"N",out _) || request.Policy is null ||
     request.Identity is null || request.Identity.Grants is null || !HostIdentity.ValidId(request.Identity.Tenant) ||
-    request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "messageConnection" or "schemaCompare" or "kafkaPositions" or "sdk.worker"))
+    request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "messageConnection" or "schemaCompare" or "kafkaPositions" or "sdk.worker" or "analysis"))
     throw new InvalidDataException("Incompatible Worker request");
-var policy = request.Policy with { Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated };
+if (request.AnalysisFiles is not null && request.Mode is not ("analysis" or "file"))
+    throw new InvalidDataException("Invalid private analysis file scope");
+var policy = request.Policy with
+{
+    Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated,
+    AnalysisFiles = request.AnalysisFiles
+};
 if (request.Mode == "sdk.worker")
 {
     var configuration = request.Payload?.Deserialize<SdkWorkerConfiguration>(WorkerProtocol.Json)
@@ -91,6 +97,8 @@ if (request.Mode != "execute") {
             request.Identity.Require("script.compile","*");
             value = CSharpDeployment.Compile(request.Payload!.Value.GetProperty("source").GetString()!,Path.Combine(policy.DataDirectory,"assemblies"),policy.Tenant,
                 (_,resource,access) => access == ConnectionAccess.Write && HostPolicy.Inside(resource,Path.Combine(policy.DataDirectory,"assemblies")));
+        } else if (request.Mode == "analysis") {
+            value = UniversalData.Worker.AnalysisResults.Run(policy, request, guardianLost.Token);
         } else {
             if (request.Mode == "kafkaPositions")
                 request.Identity.Require("package.execute",request.Payload!.Value.GetProperty("packageId").GetString()!);

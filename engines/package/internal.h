@@ -325,6 +325,7 @@ ud_status ud_error_policy(const ud_json *, const char *, int, int *);
 
 ud_status ud_schema_report(ud_activation *, ud_string, ud_status);
 ud_status ud_quality_component_register(ud_registry *);
+ud_status ud_analysis_component_register(ud_registry *);
 ud_status ud_cache_components_register(ud_registry *);
 struct ud_rule_delivery;
 ud_status ud_rule_stage(ud_activation *, const ud_batch *, struct ud_rule_delivery **);
