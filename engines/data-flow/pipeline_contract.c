@@ -166,7 +166,7 @@ static ud_status bind_cursor(node *n) {
     return status;
 }
 
-static ud_status validate_live_sql_effects(physical_plan *p) {
+static ud_status validate_live_sql_effects(physical_plan *p, const ud_json *definition) {
     int live_sql = 0;
     for (uint32_t index = 0; index < p->count; index++) {
         const node *n = p->nodes + index;
@@ -177,6 +177,8 @@ static ud_status validate_live_sql_effects(physical_plan *p) {
             live_sql = 1;
     }
     if (!live_sql)
+        return UD_OK;
+    if (ud_analysis_snapshot_flow(definition))
         return UD_OK;
     for (uint32_t index = 0; index < p->count; index++) {
         node *n = p->nodes + index;
@@ -209,8 +211,8 @@ static ud_status validate_live_sql_effects(physical_plan *p) {
     return UD_OK;
 }
 
-ud_status ud_pipeline_validate_contract(physical_plan *p) {
-    UD_TRY(validate_live_sql_effects(p));
+ud_status ud_pipeline_validate_contract(physical_plan *p, const ud_json *definition) {
+    UD_TRY(validate_live_sql_effects(p, definition));
     int managed_cursor = 0, receipt_targets = 0;
     for (uint32_t i = 0; i < p->count; i++) {
         node *n = p->nodes + p->order[i];

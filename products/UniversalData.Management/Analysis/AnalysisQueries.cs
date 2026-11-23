@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,8 +12,19 @@ internal sealed partial class AnalysisWorkspace
 {
     private const int DetailPageSize = 100;
     private const int DetailExportLimit = 2000;
-    private sealed record QueryBinding(string DatasetId, string Subject, string Tenant, AnalysisQuery Query);
+    private const int MaximumSharedReportBatches = 32;
+    private const int MaximumNativeResultRows = 5005;
+    private const int MaximumCachedReportBatches = 8;
+    private const int MaximumCachedReportBytes = 32 * 1024 * 1024;
+    internal sealed record QueryBinding(string DatasetId, string Subject, string Tenant, AnalysisQuery Query);
     private sealed record CursorBinding(string Context, string?[]? Cell, int After);
+    private readonly ConcurrentDictionary<string, Lazy<Task<Dictionary<string, AnalysisResult>>>> sharedReports = new(StringComparer.Ordinal);
+    private readonly object sharedReportsGate = new();
+    private readonly ConcurrentDictionary<string, Lazy<Task<string[]>>> sharedAssetPaths = new(StringComparer.Ordinal);
+    private readonly object sharedAssetPathsGate = new();
+    private readonly Dictionary<string, (Dictionary<string, AnalysisResult> Values, int Bytes)> cachedReports = new(StringComparer.Ordinal);
+    private readonly object cachedReportsGate = new();
+    private int cachedReportBytes;
 
     private AnalysisAsset Asset(HostPolicy scope, string id, string releaseId)
     {
@@ -21,7 +33,7 @@ internal sealed partial class AnalysisWorkspace
         var result = State(catalog, scope, id, Revision(releaseId)).Asset;
         if (result?.Release.Id != releaseId)
             throw Failure(StatusCode.Invalid, "指定的报表版本不存在。");
-        RequireSource(scope, result.Source);
+        RequireSource(scope, result);
         return result;
     }
 
@@ -67,18 +79,119 @@ internal sealed partial class AnalysisWorkspace
     }
 
     private async Task<AnalysisResult> ReadReport(HostPolicy scope, AnalysisAsset asset, QueryBinding binding,
-        string token, CancellationToken cancellation)
+        string token, CancellationToken cancellation, string[]? verifiedPaths = null)
     {
-        var query = binding.Query;
-        var files = new AnalysisFileScope(binding.DatasetId, Asset: asset.File);
-        string path = await AssetPath(scope, files, asset.ContentHash, cancellation);
+        var reports = await ReadReports(scope, asset,
+            [new ReportRequest("single", binding, token)], cancellation, verifiedPaths);
+        return reports["single"];
+    }
+
+    private async Task<Dictionary<string, AnalysisResult>> ReadReports(HostPolicy scope, AnalysisAsset asset,
+        IReadOnlyList<ReportRequest> reports, CancellationToken cancellation, string[]? verifiedPaths = null)
+    {
+        if (reports.Count == 0 || reports.Select(report => report.Key).Distinct(StringComparer.Ordinal).Count() != reports.Count)
+            throw new ArgumentException("Report keys must be unique", nameof(reports));
+
+        string[] paths = verifiedPaths ?? await AssetPaths(scope, reports[0].Binding.DatasetId, asset, cancellation);
+        int resultLimit = checked(reports.Sum(report => ReportLimit(report.Binding.Query)));
+        if (reports.Count > 1 && resultLimit > MaximumNativeResultRows)
+        {
+            // Native result transport has a fixed bounded response. Preserve
+            // correctness for unusually wide boards by falling back to the
+            // existing per-report topology; ordinary six-card boards remain a
+            // single shared execution.
+            var individual = new Dictionary<string, AnalysisResult>(StringComparer.Ordinal);
+            foreach (var report in reports)
+            {
+                var result = await ReadReports(scope, asset, [report], cancellation, paths);
+                individual.Add(report.Key, result[report.Key]);
+            }
+            return individual;
+        }
+
+        string cacheKey = SharedReportKey(scope, asset, reports);
+        if (TryGetCachedReports(cacheKey, out Dictionary<string, AnalysisResult>? cached))
+        {
+            VerifyRead(scope, reports[0].Binding.DatasetId, asset);
+            return reports.ToDictionary(report => report.Key,
+                report => cached![report.Key] with { Context = report.Token }, StringComparer.Ordinal);
+        }
+
+        Lazy<Task<Dictionary<string, AnalysisResult>>>? shared = null;
+        bool created = false;
+        lock (sharedReportsGate)
+        {
+            if (!sharedReports.TryGetValue(cacheKey, out shared) &&
+                sharedReports.Count < MaximumSharedReportBatches)
+            {
+                shared = new(() => ReadReportsCore(scope, asset, reports, paths, CancellationToken.None),
+                    LazyThreadSafetyMode.ExecutionAndPublication);
+                sharedReports[cacheKey] = shared;
+                created = true;
+            }
+        }
+        if (created)
+            _ = shared!.Value.ContinueWith(_ => RemoveSharedReport(cacheKey, shared),
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+        Dictionary<string, AnalysisResult> values;
+        if (shared is null)
+            values = await ReadReportsCore(scope, asset, reports, paths, cancellation);
+        else
+            values = await shared.Value.WaitAsync(cancellation);
+
+        CacheReports(cacheKey, values);
+
+        // The computation is shareable, but authorization is not. Every caller
+        // revalidates the source after the shared work completes, then receives
+        // a context token bound to its own identity.
+        VerifyRead(scope, reports[0].Binding.DatasetId, asset);
+        return reports.ToDictionary(report => report.Key,
+            report => values[report.Key] with { Context = report.Token }, StringComparer.Ordinal);
+    }
+
+    private async Task<Dictionary<string, AnalysisResult>> ReadReportsCore(HostPolicy scope,
+        AnalysisAsset asset, IReadOnlyList<ReportRequest> reports, string[]? verifiedPaths,
+        CancellationToken cancellation)
+    {
+        string[] paths = verifiedPaths ?? await AssetPaths(scope, reports[0].Binding.DatasetId, asset, cancellation);
+        var files = QueryFileScope(reports[0].Binding.DatasetId, asset);
+        var plan = new AnalysisPlan(files.DatasetId, files.ScratchPath(scope));
+        string package = reports.Count == 1
+            ? plan.Query(asset, paths, reports[0].Binding.Query)
+            : plan.QueryBatch(asset, paths, reports.Select(report => (report.Key, report.Binding.Query)).ToArray());
+        var result = await Run(scope, files, package, reports.Sum(report => ReportLimit(report.Binding.Query)),
+            cancellation, "当前版本的汇总无法计算，请检查字段规则与指标设置。");
+        var values = new Dictionary<string, AnalysisResult>(StringComparer.Ordinal);
+        foreach (var report in reports)
+        {
+            IEnumerable<Dictionary<string, string?>> rows = result.Rows;
+            if (reports.Count > 1)
+            {
+                rows = rows.Where(row => row.GetValueOrDefault(AnalysisPlan.BatchMarkerField) == report.Key)
+                    .Select(row => row.Where(item => item.Key != AnalysisPlan.BatchMarkerField)
+                        .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal));
+            }
+            values.Add(report.Key, BuildReportResult(asset, report.Binding, rows));
+        }
+        return values;
+    }
+
+    private static AnalysisFileScope QueryFileScope(string datasetId, AnalysisAsset asset) =>
+        new(datasetId, Asset: asset.File, Assets: asset.Shards?.Select(shard => shard.File).ToArray(),
+            ScratchTicket: asset.Sql is null ? null : Guid.NewGuid().ToString("N"));
+
+    private static int ReportLimit(AnalysisQuery query) =>
+        checked(1 + (AnalysisPlan.Groupings(query).Length - 1) * (query.Limit + 1));
+
+    private static AnalysisResult BuildReportResult(AnalysisAsset asset, QueryBinding binding,
+        IEnumerable<Dictionary<string, string?>> inputRows)
+    {
+        AnalysisQuery query = binding.Query;
+        var rows = inputRows.ToArray();
         var grouping = AnalysisPlan.Groupings(query);
-        var rows = await Run(scope, files, new AnalysisPlan(binding.DatasetId).Query(asset, path, query),
-            1 + (grouping.Length - 1) * (query.Limit + 1), cancellation,
-            "当前版本的汇总无法计算，请检查字段规则与指标设置。");
-        VerifyRead(scope, binding.DatasetId, asset);
         string[] keys = query.Dimensions.Select(AnalysisPlan.Key).ToArray();
-        var totals = rows.Rows.Where(row => !keys.Any(row.ContainsKey)).ToArray();
+        var totals = rows.Where(row => !keys.Any(row.ContainsKey)).ToArray();
         if (totals.Length > 1)
             throw new InvalidDataException("Duplicate Native analysis totals");
         var measures = asset.Release.Measures.Where(measure => query.Measures!.Contains(measure.Id)).ToArray();
@@ -88,7 +201,7 @@ internal sealed partial class AnalysisWorkspace
         foreach (var dimensions in grouping.Skip(1))
         {
             string[] groupKeys = dimensions.Select(AnalysisPlan.Key).ToArray();
-            var groupRows = rows.Rows.Where(row => keys.Count(row.ContainsKey) == groupKeys.Length && groupKeys.All(row.ContainsKey)).ToArray();
+            var groupRows = rows.Where(row => keys.Count(row.ContainsKey) == groupKeys.Length && groupKeys.All(row.ContainsKey)).ToArray();
             if (groupRows.Length > query.Limit)
                 throw Failure(StatusCode.Resource, "汇总分组太多，请缩小日期或分类范围。");
             groups.Add(new(dimensions, groupRows.Select(row =>
@@ -96,7 +209,136 @@ internal sealed partial class AnalysisWorkspace
         }
         var total = totals.SingleOrDefault();
         bool empty = total?.GetValueOrDefault("records") is null or "0";
-        return new(token, asset.Release.Id, measures, Values(total), groups.ToArray(), empty);
+        return new(string.Empty, asset.Release.Id, measures, Values(total), groups.ToArray(), empty);
+    }
+
+    private static string SharedReportKey(HostPolicy scope, AnalysisAsset asset,
+        IReadOnlyList<ReportRequest> reports) =>
+        JsonSerializer.Serialize(new
+        {
+            scope.Tenant,
+            scope.Identity.Subject,
+            dataset = reports[0].Binding.DatasetId,
+            release = asset.Release.Id,
+            files = asset.Shards?.Select(shard => new { shard.File, shard.ContentHash, shard.Rows }).ToArray()
+                ?? [new { File = asset.File, ContentHash = asset.ContentHash, Rows = (int?)asset.Release.Rows }],
+            queries = reports.Select(report => new { report.Key, report.Binding.Query }).ToArray()
+        }, Json);
+
+    private bool TryGetCachedReports(string key, out Dictionary<string, AnalysisResult>? values)
+    {
+        lock (cachedReportsGate)
+        {
+            if (cachedReports.TryGetValue(key, out var entry))
+            {
+                values = entry.Values;
+                return true;
+            }
+        }
+        values = null;
+        return false;
+    }
+
+    private void CacheReports(string key, Dictionary<string, AnalysisResult> values)
+    {
+        int bytes = JsonSerializer.SerializeToUtf8Bytes(values, Json).Length;
+        if (bytes > MaximumCachedReportBytes) return;
+        lock (cachedReportsGate)
+        {
+            if (cachedReports.ContainsKey(key) || cachedReports.Count >= MaximumCachedReportBatches ||
+                cachedReportBytes > MaximumCachedReportBytes - bytes)
+                return;
+            cachedReports.Add(key, (values, bytes));
+            cachedReportBytes += bytes;
+        }
+    }
+
+    private void RemoveSharedReport(string key, Lazy<Task<Dictionary<string, AnalysisResult>>> value)
+    {
+        if (!value.IsValueCreated || !value.Value.IsCompleted) return;
+        lock (sharedReportsGate)
+            ((ICollection<KeyValuePair<string, Lazy<Task<Dictionary<string, AnalysisResult>>>>>)sharedReports)
+                .Remove(new(key, value));
+    }
+
+    private async Task<string[]> AssetPaths(HostPolicy scope, string datasetId, AnalysisAsset asset,
+        CancellationToken cancellation)
+    {
+        string key = AssetPathsKey(scope, datasetId, asset);
+        Lazy<Task<string[]>>? shared = null;
+        bool created = false;
+        lock (sharedAssetPathsGate)
+        {
+            if (sharedAssetPaths.TryGetValue(key, out shared) && shared.IsValueCreated && shared.Value.IsCompleted)
+            {
+                ((ICollection<KeyValuePair<string, Lazy<Task<string[]>>>>)sharedAssetPaths)
+                    .Remove(new(key, shared));
+                shared = null;
+            }
+            if (shared is null && sharedAssetPaths.Count < MaximumSharedReportBatches)
+            {
+                shared = new(() => AssetPathsCore(scope, datasetId, asset, CancellationToken.None),
+                    LazyThreadSafetyMode.ExecutionAndPublication);
+                sharedAssetPaths[key] = shared;
+                created = true;
+            }
+        }
+        if (created)
+            _ = shared!.Value.ContinueWith(_ => RemoveSharedAssetPaths(key, shared),
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        if (shared is null)
+            return await AssetPathsCore(scope, datasetId, asset, cancellation);
+        return await shared!.Value.WaitAsync(cancellation);
+    }
+
+    private static string AssetPathsKey(HostPolicy scope, string datasetId, AnalysisAsset asset) =>
+        JsonSerializer.Serialize(new
+        {
+            scope.Tenant,
+            scope.Identity.Subject,
+            datasetId,
+            release = asset.Release.Id,
+            files = asset.Shards?.Select(shard => new { shard.File, shard.ContentHash, shard.Rows }).ToArray()
+                ?? [new { File = asset.File, ContentHash = asset.ContentHash, Rows = (int?)asset.Release.Rows }]
+        }, Json);
+
+    private void RemoveSharedAssetPaths(string key, Lazy<Task<string[]>> value)
+    {
+        if (!value.IsValueCreated || !value.Value.IsCompleted) return;
+        lock (sharedAssetPathsGate)
+            ((ICollection<KeyValuePair<string, Lazy<Task<string[]>>>>)sharedAssetPaths)
+                .Remove(new(key, value));
+    }
+
+    private static async Task<string[]> AssetPathsCore(HostPolicy scope, string datasetId, AnalysisAsset asset,
+        CancellationToken cancellation)
+    {
+        AnalysisShard[]? manifest = asset.Shards is { Length: > 0 } value ? value : null;
+        bool hasManifest = manifest is not null;
+        AnalysisShard[] shards = manifest ??
+            [new AnalysisShard(asset.File, asset.ContentHash, asset.Release.Rows)];
+        if (hasManifest && shards.Any(shard => !shard.Rows.HasValue) ||
+            shards.Any(shard => shard.Rows < 0 || string.IsNullOrWhiteSpace(shard.File) ||
+                string.IsNullOrWhiteSpace(shard.ContentHash)) ||
+            shards.Select(shard => shard.File).Distinct(StringComparer.Ordinal).Count() != shards.Length ||
+            !StringComparer.Ordinal.Equals(shards[0].File, asset.File) ||
+            !StringComparer.Ordinal.Equals(shards[0].ContentHash, asset.ContentHash) ||
+            shards.All(shard => shard.Rows.HasValue) &&
+            shards.Sum(shard => (long)shard.Rows!.Value) != asset.Release.Rows)
+            throw Failure(StatusCode.Corrupt, "此版本的物理分片清单无效。");
+        var paths = new string[shards.Length];
+        for (int index = 0; index < shards.Length; index++)
+        {
+            var files = new AnalysisFileScope(datasetId, Asset: shards[index].File);
+            string path = files.AssetPath(scope)!;
+            HostFiles.NoLinks(path);
+            if (!File.Exists(path))
+                throw Failure(StatusCode.Incompatible, "此版本的数据文件已不可读取。请从可用版本重新生成报表。");
+            if (await FileHash(path, cancellation) != shards[index].ContentHash)
+                throw Failure(StatusCode.Corrupt, "此版本的数据与发布时不一致。");
+            paths[index] = path;
+        }
+        return paths;
     }
 
     private QueryBinding BindContext(HostPolicy scope, string id, string value)
@@ -121,22 +363,11 @@ internal sealed partial class AnalysisWorkspace
         }
     }
 
-    private static async Task<string> AssetPath(HostPolicy scope, AnalysisFileScope files, string contentHash, CancellationToken cancellation)
-    {
-        string path = files.AssetPath(scope)!;
-        HostFiles.NoLinks(path);
-        if (!File.Exists(path))
-            throw Failure(StatusCode.Incompatible, "此版本的数据文件已不可读取。请从可用版本重新生成报表。");
-        if (await FileHash(path, cancellation) != contentHash)
-            throw Failure(StatusCode.Corrupt, "此版本的数据与发布时不一致。");
-        return path;
-    }
-
     private void VerifyRead(HostPolicy scope, string id, AnalysisAsset asset)
     {
         scope = Reauthorize(scope);
         scope.Identity.Require("analysis.read", id);
-        RequireSource(scope, asset.Source);
+        RequireSource(scope, asset);
     }
 
     private static void VerifyCell(AnalysisQuery query, string?[]? cell)
@@ -176,9 +407,10 @@ internal sealed partial class AnalysisWorkspace
     private async Task<Dictionary<string, string?>[]> ReadDetails(HostPolicy scope, AnalysisAsset asset, QueryBinding binding,
         string?[]? cell, int after, int limit, CancellationToken cancellation)
     {
-        var files = new AnalysisFileScope(binding.DatasetId, Asset: asset.File);
-        string path = await AssetPath(scope, files, asset.ContentHash, cancellation);
-        var result = await Run(scope, files, new AnalysisPlan(binding.DatasetId).Details(asset, path, binding.Query, cell, after, limit),
+        string[] paths = await AssetPaths(scope, binding.DatasetId, asset, cancellation);
+        var files = QueryFileScope(binding.DatasetId, asset);
+        var plan = new AnalysisPlan(files.DatasetId, files.ScratchPath(scope));
+        var result = await Run(scope, files, plan.Details(asset, paths, binding.Query, cell, after, limit),
             limit + 1, cancellation, "无法读取该版本的明细，请重新打开报表。");
         VerifyRead(scope, binding.DatasetId, asset);
         return result.Rows;

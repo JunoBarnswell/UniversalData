@@ -968,7 +968,7 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
     if (ud_named(p->delivery_mode, "kafkaTransaction"))
         UD_TRY(ud_pipeline_kafka_bind(p, ud_member(definition, "delivery")));
     UD_TRY(ud_pipeline_parallel_bind(p, definition));
-    return ud_pipeline_validate_contract(p);
+    return ud_pipeline_validate_contract(p, definition);
 }
 ud_status ud_pipeline_bind_validate(ud_activation *e, const ud_json *definition) {
     physical_plan p = {0};

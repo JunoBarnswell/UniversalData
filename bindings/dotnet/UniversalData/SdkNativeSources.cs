@@ -36,22 +36,28 @@ internal static class SdkNativeSources
         FindPluginPath(kind, workerPath) ?? throw new UniversalDataException((int)StatusCode.DriverUnavailable,
             $"The Native {kind} connector was not found in the installed runtime");
 
-    internal static string? FindPluginPath(DataSourceKind kind, string? workerPath = null)
+    internal static string? FindPluginPath(DataSourceKind kind, string? workerPath = null,
+        IReadOnlyList<string>? pluginDirectories = null)
     {
+        string name = "ud_connector_" + DriverName(kind) + (OperatingSystem.IsWindows() ? ".dll" : ".so");
+        if (pluginDirectories is not null)
+            foreach (string directory in pluginDirectories)
+            {
+                string configured = Path.Combine(directory, name);
+                if (File.Exists(configured)) return Path.GetFullPath(configured);
+            }
         var executable = workerPath ?? Environment.GetEnvironmentVariable("UD_WORKER_PATH");
         string root = string.IsNullOrWhiteSpace(executable) ? AppContext.BaseDirectory :
             Path.GetDirectoryName(Path.GetFullPath(executable))!;
         var key = (kind, root);
         if (installedDrivers.TryGetValue(key, out string? installed) && File.Exists(installed)) return installed;
-        var path = LocatePlugin(kind, root);
+        var path = LocatePlugin(name, root);
         if (path is not null) installedDrivers[key] = path;
         return path;
     }
 
-    private static string? LocatePlugin(DataSourceKind kind, string workerRoot)
+    private static string? LocatePlugin(string name, string workerRoot)
     {
-        var stem = "ud_connector_" + DriverName(kind);
-        var name = stem + (OperatingSystem.IsWindows() ? ".dll" : ".so");
         var rid = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
         string[] roots = [AppContext.BaseDirectory, workerRoot];
         foreach (string root in roots.Distinct())

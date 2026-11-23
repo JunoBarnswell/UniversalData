@@ -13,6 +13,13 @@ find_library(UDArrow_PARQUET_LIBRARY NAMES parquet libparquet.so.${UDArrow_MAJOR
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(UDArrow REQUIRED_VARS UDArrow_INCLUDE_DIR UDArrow_LIBRARY UDArrow_PARQUET_LIBRARY VERSION_VAR UDArrow_VERSION)
 if(UDArrow_FOUND AND NOT TARGET UDArrow::Arrow)
+  if(WIN32)
+    # Windows PyArrow wheels ship private, hash-named DLLs beside the package.
+    get_filename_component(arrow_library_directory "${UDArrow_LIBRARY}" DIRECTORY)
+    if(IS_DIRECTORY "${arrow_library_directory}.libs")
+      set(UDArrow_RUNTIME_DIRECTORY "${arrow_library_directory}.libs")
+    endif()
+  endif()
   # find_library locates the link input, which may be a Windows import library.
   add_library(UDArrow::Arrow UNKNOWN IMPORTED)
   set_target_properties(UDArrow::Arrow PROPERTIES IMPORTED_LOCATION "${UDArrow_LIBRARY}" INTERFACE_INCLUDE_DIRECTORIES "${UDArrow_INCLUDE_DIR}")

@@ -89,6 +89,7 @@ app.Use(async (context,next) => {
     catch(Exception error) when(error is ArgumentException or JsonException or FormatException or OverflowException) {
         if (context.Response.HasStarted) throw; context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new Result(StatusCode.Invalid, new(ErrorSource.Native, StatusCode.Invalid, "Invalid request"))); }
     catch(Exception error) when(error is IOException or InvalidDataException or OperationCanceledException or InvalidOperationException) {
+        app.Logger.LogDebug("Management operation failed ({Type}) at {Stack}", error.GetType().Name, error.StackTrace);
         if (context.Response.HasStarted) throw; context.Response.StatusCode = 503; await context.Response.WriteAsJsonAsync(new Result(StatusCode.Io, new(ErrorSource.Worker, StatusCode.Io, "Host operation is unavailable"))); }
 });
 ManagementSecurity.Install(app, policy, identities, leadership);

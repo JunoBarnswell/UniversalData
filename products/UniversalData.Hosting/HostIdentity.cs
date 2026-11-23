@@ -66,6 +66,17 @@ public sealed class IdentityDirectory
             return Identity(document, user);
         }
     }
+    internal Dictionary<string, HostIdentity> FindInTenant(string tenant, IEnumerable<string> subjects)
+    {
+        var selected = subjects.ToHashSet(StringComparer.Ordinal);
+        if (selected.Count == 0) return [];
+        lock (gate)
+        {
+            var (document, _) = Read();
+            return document.Users.Where(user => user.Tenant == tenant && !user.Disabled && selected.Contains(user.Id))
+                .ToDictionary(user => user.Id, user => Identity(document, user), StringComparer.Ordinal);
+        }
+    }
     public HostIdentity? Authenticate(string subject, string password)
     {
         lock (gate) {

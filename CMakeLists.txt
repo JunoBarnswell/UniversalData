@@ -246,7 +246,9 @@ if(WIN32)
       iceberg::iceberg_bundle_shared iceberg::iceberg_rest_shared)
   endif()
   ud_windows_runtime(ud_core_windows_runtime LIBRARIES ud_data
+    POST_LINK_TARGET ud_data
     BUILD_DIRECTORY "$<TARGET_FILE_DIR:ud_data>"
+    DIRECTORIES "${UDArrow_RUNTIME_DIRECTORY}"
     LINK_INPUTS ICU::uc ICU::i18n "${UD_PCRE2_LIBRARY}" ZLIB::ZLIB EXPAT::EXPAT SQLite::SQLite3
       CURL::libcurl UDArrow::Arrow UDArrow::Parquet PostgreSQL::PostgreSQL ${UD_ICEBERG_RUNTIME_INPUTS}
       ${LIBXML2_LIBRARIES} ${LIBXSLT_LIBRARIES})

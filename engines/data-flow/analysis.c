@@ -1,11 +1,19 @@
 #include "../package/internal.h"
 
 #define ANALYSIS_MAX_FIELDS 64
-#define ANALYSIS_MAX_ROWS 100000
 #define ANALYSIS_CELL_BYTES 4096
 #define ANALYSIS_MAX_ISSUES 8
+#define ANALYSIS_DEFAULT_MAX_ROWS 100000
+#define ANALYSIS_ABSOLUTE_MAX_ROWS 30000000
 
-enum analysis_role { TEXT, CATEGORY, IDENTIFIER, DATE, AMOUNT, CURRENCY };
+enum analysis_role {
+    ANALYSIS_TEXT,
+    ANALYSIS_CATEGORY,
+    ANALYSIS_IDENTIFIER,
+    ANALYSIS_DATE,
+    ANALYSIS_AMOUNT,
+    ANALYSIS_CURRENCY
+};
 
 typedef struct analysis_column {
     uint32_t source;
@@ -25,6 +33,7 @@ typedef struct analysis_model {
     ud_string date_format, currency;
     int32_t offset_minutes;
     int decimal_point, grouping, allow_empty_amount;
+    uint64_t max_rows;
 } analysis_model;
 
 static const ud_field summary_fields[] = {
@@ -41,7 +50,7 @@ static ud_status option(const ud_json *config, const char *key, ud_string fallba
 
 static ud_status bind(analysis_model *model, const ud_batch *input, ud_batch **outputs) {
     static const char *keys[] = {"fields", "dateFormat", "offsetMinutes", "amountFormat",
-                                 "currency", "allowEmptyAmount"};
+                                 "currency", "allowEmptyAmount", "maxRows"};
     UD_TRY(ud_json_keys(model->config, keys, sizeof(keys) / sizeof(*keys)));
     const ud_json *fields = ud_member(model->config, "fields");
     model->count = ud_json_size(fields);
@@ -90,6 +99,19 @@ static ud_status bind(analysis_model *model, const ud_batch *input, ud_batch **o
             return UD_SCHEMA;
         model->offset_minutes = (int32_t)minutes;
     }
+    model->max_rows = ANALYSIS_DEFAULT_MAX_ROWS;
+    const ud_json *maximum_rows = ud_member(model->config, "maxRows");
+    if (maximum_rows) {
+        ud_string text;
+        ud_value value;
+        if (ud_json_kind(maximum_rows) != UD_JSON_NUMBER)
+            return UD_SCHEMA;
+        UD_TRY(ud_json_text(maximum_rows, &text.data, &text.length));
+        UD_TRY(ud_value_parse(model->context.memory, UD_UINT64, text.data, text.length, &value));
+        if (!value.unsigned_integer || value.unsigned_integer > ANALYSIS_ABSOLUTE_MAX_ROWS)
+            return UD_SCHEMA;
+        model->max_rows = value.unsigned_integer;
+    }
 
     ud_field schema[ANALYSIS_MAX_FIELDS + 2];
     uint64_t used = 0;
@@ -121,27 +143,27 @@ static ud_status bind(analysis_model *model, const ud_batch *input, ud_batch **o
             if (model->date_column != UINT32_MAX)
                 return UD_SCHEMA;
             model->date_column = i;
-            column->role = DATE;
+            column->role = ANALYSIS_DATE;
             column->field.type = UD_DATE32;
             column->field.nullable = 0;
         } else if (ud_named(role, "amount")) {
             if (!model->currency.length)
                 return UD_SCHEMA;
-            column->role = AMOUNT;
+            column->role = ANALYSIS_AMOUNT;
             column->field.type = UD_DECIMAL128;
             column->field.precision = 28;
             column->field.scale = 2;
             column->field.nullable = model->allow_empty_amount;
         } else if (ud_named(role, "identifier")) {
-            column->role = IDENTIFIER;
+            column->role = ANALYSIS_IDENTIFIER;
             column->field.nullable = 0;
         } else if (ud_named(role, "currency")) {
             if (!model->currency.length)
                 return UD_SCHEMA;
-            column->role = CURRENCY;
+            column->role = ANALYSIS_CURRENCY;
             column->field.nullable = 0;
         } else if (ud_named(role, "category"))
-            column->role = CATEGORY;
+            column->role = ANALYSIS_CATEGORY;
         else if (!ud_named(role, "text"))
             return UD_SCHEMA;
         schema[i] = column->field;
@@ -299,7 +321,8 @@ static ud_status normalize(analysis_model *model, const analysis_column *column,
     if (!input->is_null) {
         if (input->type == UD_UTF8)
             text = (ud_string){input->text, input->text_length};
-        else if (column->role == TEXT || column->role == CATEGORY || column->role == IDENTIFIER) {
+        else if (column->role == ANALYSIS_TEXT || column->role == ANALYSIS_CATEGORY ||
+                 column->role == ANALYSIS_IDENTIFIER) {
             uint32_t size;
             UD_TRY(ud_value_format(input, buffer, 128, &size));
             text = (ud_string){buffer, size - 1};
@@ -314,9 +337,9 @@ static ud_status normalize(analysis_model *model, const analysis_column *column,
     }
     if (text.length > ANALYSIS_CELL_BYTES)
         return UD_QUALITY;
-    if (column->role == DATE)
+    if (column->role == ANALYSIS_DATE)
         return date_value(model, source, input, trimmed, out);
-    if (column->role == AMOUNT) {
+    if (column->role == ANALYSIS_AMOUNT) {
         if (input->type == UD_UTF8)
             return decimal_text(model, trimmed, out);
         if (input->type != UD_DECIMAL128 && input->type != UD_INT64 && input->type != UD_UINT64)
@@ -324,7 +347,7 @@ static ud_status normalize(analysis_model *model, const analysis_column *column,
         return ud_value_cast_field(model->context.memory, source, input, &column->field,
                                    UD_ROUND_EXACT, 0, out);
     }
-    if (column->role == CURRENCY && !ud_same(text, model->currency))
+    if (column->role == ANALYSIS_CURRENCY && !ud_same(text, model->currency))
         return UD_QUALITY;
     out->text = text.data;
     out->text_length = text.length;
@@ -372,8 +395,10 @@ static ud_status step(void *instance, const ud_component_event *event) {
         return UD_OK;
     ud_context *ctx = model->context.memory;
     const ud_batch *input = event->batch;
-    if (input->rows > ANALYSIS_MAX_ROWS - model->rows)
-        return ud_fail(ctx, UD_RESOURCE, "Analysis exceeds 100000 records");
+    if (model->rows > UINT64_MAX - input->rows)
+        return ud_fail(ctx, UD_OVERFLOW, "Analysis row count overflow");
+    if (model->rows > model->max_rows || input->rows > model->max_rows - model->rows)
+        return ud_fail(ctx, UD_RESOURCE, "Analysis exceeds configured row limit");
     ud_batch *output = NULL;
     UD_TRY(ud_batch_create(ctx, model->output->schema->fields, model->output->columns,
                            input->rows, &output));
@@ -441,7 +466,8 @@ ud_status ud_analysis_component_register(ud_registry *registry) {
         "{\"type\":\"object\",\"required\":[\"fields\"],\"properties\":{"
         "\"fields\":{\"type\":\"array\"},\"dateFormat\":{\"type\":\"string\"},"
         "\"offsetMinutes\":{\"type\":\"integer\"},\"amountFormat\":{\"type\":\"string\"},"
-        "\"currency\":{\"type\":\"string\"},\"allowEmptyAmount\":{\"type\":\"boolean\"}},"
+        "\"currency\":{\"type\":\"string\"},\"allowEmptyAmount\":{\"type\":\"boolean\"},"
+        "\"maxRows\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":30000000,\"default\":100000}},"
         "\"additionalProperties\":false}";
     const ud_component_descriptor descriptor = {
         .struct_size = sizeof(descriptor),

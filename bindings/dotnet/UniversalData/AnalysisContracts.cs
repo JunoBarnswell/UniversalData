@@ -6,7 +6,8 @@ public sealed record AnalysisField(string Id, string Label, string PhysicalType,
 public sealed record AnalysisRule(string FieldId, string Label, string Role);
 public sealed record AnalysisModel(string Grain, AnalysisRule[] Fields, string DateFormat = "iso",
     int OffsetMinutes = 0, string AmountFormat = "point", string? Currency = null,
-    bool AllowEmptyAmount = true, bool ConfirmSingleCurrency = false, bool ConfirmLineAmount = false);
+    bool AllowEmptyAmount = true, bool ConfirmSingleCurrency = false, bool ConfirmLineAmount = false,
+    AnalysisMetricDefinition[]? Metrics = null);
 
 public sealed record AnalysisDataset(string Id, string Name, string Revision, string SourceName, string Kind,
     string? Sheet, AnalysisModel? Draft, string? PublishedReleaseId, AnalysisSavedReport? Report);

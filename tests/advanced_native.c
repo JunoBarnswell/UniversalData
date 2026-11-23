@@ -231,7 +231,7 @@ static int text_keys(ud_context *c, ud_buffer_manager *m) {
     const uint32_t key = 0;
     const char *aggregation = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"group\":[\"label\"],\"aggregates\":["
                               "{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
-    ud_field fields[2];
+    ud_field fields[3];
     OK(ud_batch_field(left, 0, fields));
     OK(ud_batch_field(left, 1, fields + 1));
     ud_plan *plan = NULL;
@@ -335,6 +335,193 @@ static int text_keys(ud_context *c, ud_buffer_manager *m) {
     ud_plan_destroy(plan);
     ud_batch_destroy(right);
     ud_batch_destroy(left);
+    return 0;
+}
+static int hash_group_low_cardinality(ud_context *c) {
+    const char *definition =
+        "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"group\":[\"group\"],\"aggregates\":["
+        "{\"function\":\"count\",\"column\":\"*\",\"name\":\"rows\"},"
+        "{\"function\":\"sum\",\"column\":\"amount\",\"name\":\"total\"},"
+        "{\"function\":\"sum\",\"column\":\"exact\",\"name\":\"exactTotal\"}]}";
+    ud_batch *source = NULL;
+    ud_plan *plan = NULL;
+    ud_buffer_manager *limited = NULL;
+    ud_operator *aggregate = NULL;
+    ud_field source_fields[] = {{.name = "group", .name_length = 5, .type = UD_UTF8, .nullable = 1},
+                                {.name = "amount", .name_length = 6, .type = UD_INT64},
+                                {.name = "exact",
+                                 .name_length = 5,
+                                 .type = UD_DECIMAL128,
+                                 .precision = 18,
+                                 .scale = 2}};
+    OK(ud_batch_create(c, source_fields, 3, 1, &source));
+    ud_value initial[] = {{.type = UD_UTF8, .text = "A", .text_length = 1},
+                          {.type = UD_INT64, .integer = 0},
+                          {.type = UD_DECIMAL128, .decimal = {0, 0}, .precision = 18, .scale = 2}};
+    OK(ud_batch_append(source, initial, 3));
+    OK(ud_batch_seal(source));
+    ud_field fields[3];
+    OK(ud_batch_field(source, 0, fields));
+    OK(ud_batch_field(source, 1, fields + 1));
+    OK(ud_batch_field(source, 2, fields + 2));
+    OK(ud_plan_create_fields(c, UD_PLAN_VERSION, fields, 3, text(definition), NULL, &plan));
+    OK(ud_buffer_manager_create(
+        c,
+        &(ud_buffer_options){.struct_size = sizeof(ud_buffer_options),
+                             .abi_version = UD_ABI_VERSION,
+                             .max_blocks = 4096,
+                             .resident_limit = 262144,
+                             .working_limit = 262144,
+                             .spill_limit = 0},
+        &limited));
+    const ud_batch *inputs[] = {source};
+    ud_operator_options options = {.struct_size = sizeof(options),
+                                   .abi_version = UD_ABI_VERSION,
+                                   .kind = UD_OPERATOR_AGGREGATE,
+                                   .max_batch_rows = 1024,
+                                   .partition_count = 1,
+                                   .aggregation = plan,
+                                   .buffers = limited,
+                                   .memory_budget = 262144,
+                                   .spill_budget = 0};
+    OK(ud_operator_create(c, &options, inputs, &aggregate));
+    uint64_t expected_count[3] = {0, 0, 0};
+    int64_t expected_sum[3] = {0, 0, 0};
+    for (uint32_t batch_number = 0; batch_number < 32; batch_number++) {
+        ud_batch *batch = NULL;
+        OK(ud_batch_create(c, fields, 3, 1024, &batch));
+        for (uint32_t row = 0; row < 1024; row++) {
+            uint32_t value = batch_number * 1024 + row;
+            uint32_t group = value % 3u;
+            ud_value key = {.type = UD_UTF8,
+                             .is_null = group == 0,
+                             .text = group == 1 ? "A" : "B",
+                             .text_length = group == 0 ? 0u : 1u};
+            ud_value values[] = {key,
+                                 {.type = UD_INT64, .integer = value},
+                                 {.type = UD_DECIMAL128,
+                                  .decimal = {(uint64_t)value * 100, 0},
+                                  .precision = 18,
+                                  .scale = 2}};
+            OK(ud_batch_append(batch, values, 3));
+            expected_count[group]++;
+            expected_sum[group] += value;
+        }
+        OK(ud_batch_seal(batch));
+        OK(ud_operator_push(aggregate, 0, batch));
+        ud_batch_destroy(batch);
+    }
+    ud_buffer_metrics metrics;
+    OK(ud_buffer_manager_metrics(limited, &metrics));
+    CHECK(metrics.blocks == 0 && metrics.resident_bytes == 0);
+    OK(ud_operator_finish_input(aggregate, 0));
+    uint32_t rows = 0;
+    int previous_group = -1;
+    ud_batch *output = NULL;
+    ud_status status;
+    while ((status = ud_operator_pull(aggregate, &output, NULL)) == UD_OK) {
+        for (uint32_t row = 0; row < ud_batch_rows(output); row++) {
+            ud_value key, count, sum, exact;
+            OK(ud_batch_get(output, row, 0, &key));
+            OK(ud_batch_get(output, row, 1, &count));
+            OK(ud_batch_get(output, row, 2, &sum));
+            OK(ud_batch_get(output, row, 3, &exact));
+            CHECK(key.type == UD_UTF8);
+            uint32_t group = key.is_null ? 0 : key.text[0] == 'A' ? 1 : key.text[0] == 'B' ? 2 : 3;
+            CHECK(group < 3 && (key.is_null || key.text_length == 1));
+            CHECK((int)group > previous_group);
+            previous_group = (int)group;
+            CHECK(!count.is_null && !sum.is_null);
+            CHECK(count.integer == (int64_t)expected_count[group]);
+            CHECK(sum.integer == expected_sum[group]);
+            CHECK(!exact.is_null && exact.type == UD_DECIMAL128 && exact.scale == 2 &&
+                  exact.decimal.high == 0 &&
+                  exact.decimal.low == (uint64_t)expected_sum[group] * 100);
+            rows++;
+        }
+        ud_batch_destroy(output);
+        output = NULL;
+    }
+    CHECK(status == UD_END && rows == 3);
+    OK(ud_operator_destroy(aggregate));
+    aggregate = NULL;
+    OK(ud_buffer_manager_destroy(limited));
+    limited = NULL;
+    ud_plan_destroy(plan);
+    ud_batch_destroy(source);
+    return 0;
+}
+static int hash_group_high_cardinality_fallback(ud_context *c) {
+    const char *schema =
+        "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":["
+        "{\"name\":\"group\",\"type\":\"int64\",\"nullable\":false}]}";
+    const char *definition =
+        "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"group\":[\"group\"],\"aggregates\":["
+        "{\"function\":\"count\",\"column\":\"*\",\"name\":\"rows\"}]}";
+    ud_batch *source = NULL;
+    ud_plan *plan = NULL;
+    ud_buffer_manager *limited = NULL;
+    ud_operator *aggregate = NULL;
+    OK(input(c, schema, "[{\"group\":0}]", &source));
+    ud_field field;
+    OK(ud_batch_field(source, 0, &field));
+    OK(ud_plan_create_fields(c, UD_PLAN_VERSION, &field, 1, text(definition), NULL, &plan));
+    OK(ud_buffer_manager_create(
+        c,
+        &(ud_buffer_options){.struct_size = sizeof(ud_buffer_options),
+                             .abi_version = UD_ABI_VERSION,
+                             .max_blocks = 4096,
+                             .resident_limit = 8 * 1024 * 1024,
+                             .working_limit = 8 * 1024 * 1024,
+                             .spill_limit = 0},
+        &limited));
+    const ud_batch *inputs[] = {source};
+    ud_operator_options options = {.struct_size = sizeof(options),
+                                   .abi_version = UD_ABI_VERSION,
+                                   .kind = UD_OPERATOR_AGGREGATE,
+                                   .max_batch_rows = 5000,
+                                   .partition_count = 1,
+                                   .aggregation = plan,
+                                   .buffers = limited,
+                                   .memory_budget = 8 * 1024 * 1024,
+                                   .spill_budget = 0};
+    OK(ud_operator_create(c, &options, inputs, &aggregate));
+    ud_batch *batch = NULL;
+    OK(ud_batch_create(c, &field, 1, 4097, &batch));
+    for (uint32_t row = 0; row < 4097; row++) {
+        ud_value value = {.type = UD_INT64, .integer = row};
+        OK(ud_batch_append(batch, &value, 1));
+    }
+    OK(ud_batch_seal(batch));
+    OK(ud_operator_push(aggregate, 0, batch));
+    ud_batch_destroy(batch);
+    ud_buffer_metrics metrics;
+    OK(ud_buffer_manager_metrics(limited, &metrics));
+    CHECK(metrics.blocks > 0 && metrics.blocks < 4);
+    OK(ud_operator_finish_input(aggregate, 0));
+    uint32_t rows = 0;
+    int64_t previous = -1;
+    ud_batch *output = NULL;
+    ud_status status;
+    while ((status = ud_operator_pull(aggregate, &output, NULL)) == UD_OK) {
+        for (uint32_t row = 0; row < ud_batch_rows(output); row++) {
+            ud_value key, count;
+            OK(ud_batch_get(output, row, 0, &key));
+            OK(ud_batch_get(output, row, 1, &count));
+            CHECK(key.integer == previous + 1 && count.integer == 1);
+            previous = key.integer;
+            rows++;
+        }
+        ud_batch_destroy(output);
+        output = NULL;
+    }
+    CHECK(status == UD_END && rows == 4097 && previous == 4096);
+    OK(ud_operator_destroy(aggregate));
+    aggregate = NULL;
+    OK(ud_buffer_manager_destroy(limited));
+    limited = NULL;
+    ud_plan_destroy(plan);
+    ud_batch_destroy(source);
     return 0;
 }
 static int windows(ud_context *c, ud_buffer_manager *m) {
@@ -527,6 +714,8 @@ int main(void) {
     CHECK(!slice_roundtrip(c));
     CHECK(!join_matrix(c, m));
     CHECK(!text_keys(c, m));
+    CHECK(!hash_group_low_cardinality(c));
+    CHECK(!hash_group_high_cardinality_fallback(c));
     CHECK(!windows(c, m));
     CHECK(!cache_state(c, m));
     CHECK(!text_and_restore(c, m));

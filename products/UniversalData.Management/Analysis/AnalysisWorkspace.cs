@@ -15,6 +15,8 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
     private const int MaxUploadBytes = 50 * 1024 * 1024;
     private static readonly string[] RawTypes =
         ["utf8", "bool", "int64", "uint64", "decimal128", "float64", "date32", "timestamp", "datetime"];
+    private static readonly string[] ApprovedSqlDrivers =
+        ["ud:sqlite", "ud:postgresql", "ud:mysql", "ud:mariadb", "ud:odbc", "ud:oracle_oci"];
     private readonly IDataProtector contexts = protection.CreateProtector("UniversalData.Analysis.Query.v1");
     private readonly IDataProtector cursors = protection.CreateProtector("UniversalData.Analysis.Cursor.v1");
 
@@ -22,7 +24,7 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
         AnalysisInput Input, AnalysisDraft? Draft = null, AnalysisAsset? Asset = null,
         AnalysisSavedReport? Report = null);
     private sealed record OperationState(string Id, int Version, string Fingerprint, string Attempt, ulong ExpectedRevision,
-        AnalysisPublication Publication);
+        AnalysisPublication Publication, string[]? Assets = null);
     private sealed record NativeRows(string ExecutionId, Dictionary<string, string?>[] Rows);
     private sealed record RecordIssue(int Row, int Column);
     private sealed record SourceChoice(string SourceId, string? DatasetId = null, string? ExpectedRevision = null);
@@ -56,6 +58,8 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
             Export(Scope(context), id, request, context.RequestAborted));
         group.MapPut("/datasets/{id}/report", (string id, AnalysisReportWrite request, HttpContext context) =>
             SaveReport(Scope(context), id, request));
+        MapTeamDashboards(group);
+        MapAnalysisRefresh(group);
     }
 
     private HostPolicy Scope(HttpContext context)
@@ -75,11 +79,18 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
     private AnalysisIcebergSource[] PublishedSources(HostPolicy scope) =>
         host.Tenants!.GetValueOrDefault(scope.Tenant)?.AnalysisSources ?? [];
 
+    private AnalysisSqlSource[] PublishedSqlSources(HostPolicy scope) =>
+        host.Tenants!.GetValueOrDefault(scope.Tenant)?.AnalysisSqlSources ?? [];
+
     private AnalysisSource[] Sources(HostPolicy scope)
     {
         scope.Identity.Require("analysis.read", "*");
-        return PublishedSources(scope).Where(source => CanRead(scope, source))
-            .Select(source => new AnalysisSource(source.Id, source.Name, "iceberg", source.SnapshotId)).ToArray();
+        var iceberg = PublishedSources(scope).Where(source => CanRead(scope, source))
+            .Select(source => new AnalysisSource(source.Id, source.Name, "iceberg", source.SnapshotId));
+        var sql = PublishedSqlSources(scope).Where(source => CanRead(scope, source))
+            .Select(source => new AnalysisSource(source.Id, source.Name, "sql",
+                Hash(SqlAccessShape(source))[..24]));
+        return iceberg.Concat(sql).ToArray();
     }
 
     private static bool CanRead(HostPolicy scope, AnalysisIcebergSource source)
@@ -99,10 +110,44 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
             CanUseCredential(source.Catalog) && CanUseCredential(source.Storage);
     }
 
+    private static bool CanRead(HostPolicy scope, AnalysisSqlSource source)
+    {
+        string driver = source.Connection.Driver;
+        string resource = source.Connection.Resource;
+        string? credential = source.Connection.CredentialReference;
+        if (!ApprovedSqlDrivers.Contains(driver, StringComparer.Ordinal) ||
+            !HostIdentity.ValidId(source.Id) || source.Id == "sample" || string.IsNullOrWhiteSpace(source.Name) ||
+            string.IsNullOrWhiteSpace(resource) || source.Table is not { Length: > 0 and <= 512 } ||
+            !scope.Identity.Allows("analysis.source", source.Id) ||
+            credential is not null && !scope.CredentialFiles.ContainsKey(credential) ||
+            credential is null && driver != "ud:sqlite")
+            return false;
+        if (source.Schema is { } schema && schema.ValueKind != JsonValueKind.Object)
+            return false;
+        if (driver == "ud:sqlite" && !Path.IsPathFullyQualified(resource))
+            return false;
+        if (!scope.Authorize(scope.Tenant, resource, ConnectionAccess.Open) ||
+            !scope.Authorize(scope.Tenant, resource, ConnectionAccess.Discover) ||
+            !scope.Authorize(scope.Tenant, resource, ConnectionAccess.Read))
+            return false;
+        if (driver != "ud:sqlite" && !scope.Authorize(scope.Tenant, resource, ConnectionAccess.Network))
+            return false;
+        return ValidSqlIdentifier(source.Table);
+    }
+
+    private static bool ValidSqlIdentifier(string value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 512 &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '.' or '$' or '"' or '`' or '[' or ']' or ' ');
+
     private static string AccessShape(AnalysisIcebergSource source) =>
         Hash(JsonSerializer.Serialize(new
         {
             source.Catalog, source.Storage, source.Namespace, source.Table, source.Warehouse, source.RowFilter, source.Schema
+        }, Json));
+
+    private static string SqlAccessShape(AnalysisSqlSource source) =>
+        Hash(JsonSerializer.Serialize(new
+        {
+            source.Id, source.Name, source.Connection, source.Table, source.AllowSharing, source.Schema
         }, Json));
 
     private void RequireSource(HostPolicy scope, AnalysisIcebergSource? source)
@@ -112,6 +157,57 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
                 current.Id == source.Id && CanRead(scope, current) && AccessShape(current) == AccessShape(source)))
             throw Failure(StatusCode.Auth, "当前身份已无法读取此报表的数据来源。");
     }
+
+    private void RequireSource(HostPolicy scope, AnalysisSqlSource? source)
+    {
+        if (source is null) return;
+        if (!CanRead(scope, source) || !PublishedSqlSources(scope).Any(current =>
+                current.Id == source.Id && CanRead(scope, current) && SqlAccessShape(current) == SqlAccessShape(source)))
+            throw Failure(StatusCode.Auth, "当前身份已无法读取此报表的数据来源。");
+    }
+
+    private void RequireSource(HostPolicy scope, AnalysisInput input)
+    {
+        if (input.Kind == "iceberg")
+        {
+            if (input.Iceberg is null) throw Failure(StatusCode.Auth, "分析数据来源无效。");
+            RequireSource(scope, input.Iceberg);
+        }
+        else if (input.Kind == "sql")
+        {
+            if (input.Sql is null) throw Failure(StatusCode.Auth, "分析数据来源无效。");
+            RequireSource(scope, input.Sql);
+        }
+        else if (input.Iceberg is not null || input.Sql is not null)
+            throw Failure(StatusCode.Auth, "分析数据来源类型无效。");
+    }
+
+    private void RequireSource(HostPolicy scope, AnalysisAsset asset)
+    {
+        RequireSource(scope, asset.Source);
+        RequireSource(scope, asset.Sql);
+    }
+
+    /// <summary>
+    /// Validates that an asset may be bound to a shared/team view.  Only an
+    /// explicitly host-approved SQL source can leave its owner's workspace;
+    /// the current catalog binding and source definition are checked again so
+    /// an old asset cannot be rebound to a changed source.
+    /// </summary>
+    private void RequireDistributable(HostPolicy owner, string id, AnalysisSqlSource? source)
+    {
+        owner.Identity.Require("analysis.read", id);
+        if (source is null || !source.AllowSharing)
+            throw Failure(StatusCode.Auth, "只有明确允许共享的 SQL 数据源可以加入团队报表。");
+        var approved = PublishedSqlSources(owner).SingleOrDefault(current =>
+            current.Id == source.Id && current.AllowSharing && CanRead(owner, current) &&
+            SqlAccessShape(current) == SqlAccessShape(source));
+        if (approved is null)
+            throw Failure(StatusCode.Auth, "当前身份已无法验证可共享的数据来源。");
+    }
+
+    private void RequireDistributable(HostPolicy owner, string id, AnalysisAsset asset) =>
+        RequireDistributable(owner, id, asset.Sql);
 
     private static string Hash(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static string Prefix(HostPolicy scope) => "analysis/" + Hash(scope.Identity.Subject)[..24] + "/";
@@ -224,10 +320,17 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(sample));
             return await StoreUpload(scope, target, stream, "订单样例", "csv", cancellation);
         }
-        var source = PublishedSources(scope).SingleOrDefault(item => item.Id == choice.SourceId && CanRead(scope, item))
-            ?? throw Failure(StatusCode.Auth, "当前身份无法读取所选数据。");
+        var iceberg = PublishedSources(scope).Where(item => item.Id == choice.SourceId && CanRead(scope, item)).ToArray();
+        var sql = PublishedSqlSources(scope).Where(item => item.Id == choice.SourceId && CanRead(scope, item)).ToArray();
+        if (iceberg.Length + sql.Length != 1)
+            throw Failure(StatusCode.Auth, "当前身份无法读取所选数据。");
+        if (iceberg is [var table])
+            return StoreSource(scope, target,
+                new("iceberg", table.Name, null, Hash(JsonSerializer.Serialize(table, Json)), table.DataAsOf, table));
+        var database = sql[0];
         return StoreSource(scope, target,
-            new("iceberg", source.Name, null, Hash(JsonSerializer.Serialize(source, Json)), source.DataAsOf, source));
+            new("sql", database.Name, null, SqlAccessShape(database),
+                DateTimeOffset.UtcNow, Sql: database));
     }
 
     private Task<AnalysisDataset> Upload(HostPolicy scope, HttpRequest request, CancellationToken cancellation)
@@ -308,7 +411,7 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
         scope.Identity.Require("analysis.read", id);
         using var catalog = scope.OpenCatalog();
         var state = State(catalog, scope, id, catalog.LatestRevision(CatalogKind.Audit, Key(scope, id)));
-        RequireSource(scope, state.Input.Iceberg);
+        RequireSource(scope, state.Input);
         bool chooseSheet = state.Input.Kind == "xlsx" && selected is null && state.Draft?.Source.Sheet is null;
         var schema = await Inspect(scope, state, selected ?? state.Draft?.Source.Sheet, cancellation);
         if (chooseSheet && schema.Sheets.Length > 1)
@@ -316,12 +419,12 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
 
         var files = new AnalysisFileScope(id, Input: state.Input.FileId);
         var plan = new AnalysisPlan(id);
-        var source = plan.Source(state.Input, schema, files.InputPath(scope));
+        var source = plan.Source(state.Input, schema, files.InputPath(scope), stream: true);
         var sample = await Run(scope, files, plan.Sample(source), 32, cancellation,
             "无法预览表格。请检查一行唯一表头、字段类型和公式，Excel 可另存为值后再上传。", sample: true);
         scope = Reauthorize(scope);
         scope.Identity.Require("analysis.read", id);
-        RequireSource(scope, state.Input.Iceberg);
+        RequireSource(scope, state.Input);
 
         var fields = schema.Columns.Select(column => Suggest(column, sample.Rows)).ToArray();
         var rows = sample.Rows.Select(row => schema.Columns.ToDictionary(column => column.Id,
@@ -335,6 +438,8 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
         var input = state.Input;
         if (input.Iceberg is { } iceberg)
             return new(ReadColumns(iceberg.Schema, file: false), iceberg.Schema, AnalysisPlan.Document(new { }), [], null);
+        if (input.Sql is { } sql)
+            return await InspectSql(scope, state, sql, cancellation);
         if (sheet is { Length: > 128 } || sheet?.Any(char.IsControl) == true)
             throw Failure(StatusCode.Invalid, "工作表名称无效。");
 
@@ -367,6 +472,23 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
                 type = input.Kind == "xlsx" && column.Type == "date32" ? "date32" : "utf8" })
         });
         return new(columns, readSchema, options, sheets, selected);
+    }
+
+    private async Task<AnalysisSourceSchema> InspectSql(HostPolicy scope, DatasetState state,
+        AnalysisSqlSource source, CancellationToken cancellation)
+    {
+        JsonElement schema;
+        if (source.Schema is { } cached)
+            schema = cached.Clone();
+        else
+        {
+            var payload = AnalysisPlan.Document(new { connection = "input", table = source.Table });
+            var response = await InspectWorker(scope, null, "schema", new AnalysisPlan(state.DatasetId).Schema(source),
+                payload, cancellation, "无法识别数据库表结构，请检查来源表或视图。");
+            schema = response.Clone();
+        }
+        var columns = ReadColumns(schema, file: false);
+        return new(columns, schema, AnalysisPlan.Document(new { }), [], null);
     }
 
     private static AnalysisColumn[] ReadColumns(JsonElement schema, bool file)
@@ -447,7 +569,7 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
         ulong expected = Revision(request.ExpectedRevision);
         RequireCurrent(catalog, Key(scope, id), expected);
         var state = State(catalog, scope, id, expected);
-        RequireSource(scope, state.Input.Iceberg);
+        RequireSource(scope, state.Input);
         var source = state.Draft is { } existing && existing.Source.Sheet == request.Sheet
             ? existing.Source : await Inspect(scope, state, request.Sheet, cancellation);
         if (source.Sheets.Length > 1 && request.Sheet is null)
@@ -455,7 +577,7 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
         var model = BindModel(source, request.Model);
         scope = Reauthorize(scope);
         scope.Identity.Require("analysis.write", id);
-        RequireSource(scope, state.Input.Iceberg);
+        RequireSource(scope, state.Input);
         var next = state with { Name = Name(request.Name), Draft = new(model, source) };
         using var lease = LockDataset(catalog, state.Id);
         CommitDataset(catalog, next, expected, lease);
@@ -464,13 +586,13 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
 
     private static AnalysisModel BindModel(AnalysisSourceSchema source, AnalysisModel model, bool confirmed = false)
     {
-        const string uniqueRoles = "date amount identifier currency";
+        const string uniqueRoles = "date identifier currency";
         if (model.Fields.Length != source.Columns.Length || model.Fields.Select(rule => rule.FieldId).Distinct().Count() != model.Fields.Length ||
             model.Fields.Any(rule => !source.Columns.Any(column => column.Id == rule.FieldId) ||
                 rule.Role is not ("text" or "category" or "date" or "amount" or "identifier" or "currency" or "omit")) ||
             model.Fields.All(rule => rule.Role == "omit") ||
             uniqueRoles.Split(' ').Any(role => model.Fields.Count(rule => rule.Role == role) > 1))
-            throw Failure(StatusCode.Schema, "字段设置无效。每种日期、金额、订单号和币种只能选用一列。");
+            throw Failure(StatusCode.Schema, "字段设置无效。每种日期、订单号和币种只能选用一列，金额字段可按币种确认多列。");
         if (model.OffsetMinutes is < -840 or > 840 ||
             (model.DateFormat is not ("" or "iso" or "dmy" or "mdy" or "timestamp") ||
             confirmed && model.DateFormat == "" && model.Fields.Any(rule => rule.Role == "date")))
@@ -489,14 +611,9 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
         if (ordered.Where(rule => rule.Role != "omit").Select(rule => rule.Label).Distinct(StringComparer.OrdinalIgnoreCase).Count() !=
             ordered.Count(rule => rule.Role != "omit"))
             throw Failure(StatusCode.Schema, "显示名称需要各不相同。");
+        AnalysisMetricBinder.Validate(model);
         return model with { Grain = Name(model.Grain), Fields = ordered, DateFormat = confirmed && model.DateFormat == "" ? "iso" : model.DateFormat,
             Currency = amount || currencyColumn ? model.Currency : null };
-    }
-
-    private sealed class DatasetLease(Catalog catalog, CatalogLease guard) : IDisposable
-    {
-        internal CatalogLease Guard => guard;
-        public void Dispose() => catalog.ReleaseLease(guard);
     }
 
     private static DatasetLease LockDataset(Catalog catalog, string key) =>
@@ -512,18 +629,27 @@ internal sealed partial class AnalysisWorkspace(HostPolicy host, IdentityDirecto
             throw Failure(StatusCode.Fenced, "分析已更新，请重新打开最新草稿。");
     }
 
-    private async Task<JsonElement> InspectWorker(HostPolicy scope, AnalysisFileScope files, string mode, string package,
+    private async Task<JsonElement> InspectWorker(HostPolicy scope, AnalysisFileScope? files, string mode, string package,
         JsonElement payload, CancellationToken cancellation, string error)
     {
         try
         {
-            return await worker.InspectAsync(new(ProductInfo.Protocol, Guid.NewGuid().ToString("N"), mode,
+            return await worker.InspectAsync(new(ProductInfo.Protocol, files?.ScratchTicket ?? Guid.NewGuid().ToString("N"), mode,
                 scope, scope.Identity, package, Payload: payload, AnalysisFiles: files), cancellation);
         }
         catch (UniversalDataException failure) when (failure.Code is StatusCode.Schema or StatusCode.Quality or
             StatusCode.Parse or StatusCode.Incompatible or StatusCode.Unsupported or StatusCode.Overflow)
         {
             throw Failure(failure.Code, error);
+        }
+        finally
+        {
+            // A supervised timeout can terminate the Worker before its own cleanup runs.
+            if (files?.ScratchPath(scope) is { } scratch && Directory.Exists(scratch))
+            {
+                HostFiles.NoLinks(scratch);
+                Directory.Delete(scratch, recursive: true);
+            }
         }
     }
 

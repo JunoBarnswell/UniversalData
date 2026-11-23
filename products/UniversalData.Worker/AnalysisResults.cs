@@ -18,6 +18,11 @@ internal static class AnalysisResults
         Directory.CreateDirectory(directory);
         try
         {
+            if (policy.AnalysisFiles?.ScratchPath(policy) is { } scratch)
+            {
+                HostFiles.NoLinks(scratch);
+                Directory.CreateDirectory(scratch);
+            }
             using var execution = policy.CreateExecution(request.Package, stateDirectory: sample ? null : directory);
             execution.OpenResults();
             execution.Start();

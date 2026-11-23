@@ -9,12 +9,22 @@ static uint64_t get64(const uint8_t *p) {
         n |= (uint64_t)p[i] << (i * 8);
     return n;
 }
+typedef struct ud_stat_append_values {
+    ud_batch *batch;
+} ud_stat_append_values;
+static ud_status append_distinct_value(void *user, const ud_value *value) {
+    return ud_batch_append(((ud_stat_append_values *)user)->batch, value, 1);
+}
 ud_status ud_stat_add(ud_aggregate_state *s, const ud_aggregate_def *d, const ud_value *v) {
     if (v->is_absent)
         return UD_INCOMPATIBLE;
     if (v->is_null)
         return UD_OK;
     if (d->distinct) {
+        if (s->distinct_spill) {
+            int added;
+            return ud_distinct_spill_add(s->distinct_spill, v, &added);
+        }
         s->distinct.ctx = s->ctx;
         s->distinct.maximum = d->maximum_distinct;
         int added;
@@ -66,6 +76,19 @@ ud_status ud_stat_retract(ud_aggregate_state *s, const ud_aggregate_def *d, cons
 ud_status ud_stat_result(const ud_aggregate_state *s, const ud_aggregate_def *d, const ud_field *f,
                          ud_value *out) {
     *out = (ud_value){.type = f->type, .precision = f->precision, .scale = f->scale};
+    if (d->distinct && s->distinct_spill) {
+        ud_sum_state sum;
+        uint64_t count;
+        UD_TRY(ud_distinct_spill_finalize(s->distinct_spill, &sum, &count));
+        if (d->kind == 0) {
+            if (count > INT64_MAX)
+                return UD_OVERFLOW;
+            out->integer = (int64_t)count;
+            return UD_OK;
+        }
+        if (d->kind == 1 || d->kind == 4)
+            return ud_sum_result(&sum, f, d->kind == 4, d->rounding, out);
+    }
     if (d->kind == 0) {
         out->integer = (int64_t)s->sum.count;
         return UD_OK;
@@ -88,15 +111,24 @@ ud_status ud_stat_encode(const ud_aggregate_state *s, const ud_aggregate_def *d,
     ud_field field = *f;
     field.nullable = 1;
     field.key_order = 0;
-    uint32_t count = d->distinct                                      ? s->distinct.count
-                     : (d->kind == 2 || d->kind == 3) && s->sum.count ? 1
+    uint64_t total = d->distinct && s->distinct_spill ? ud_distinct_spill_rows(s->distinct_spill)
+                    : d->distinct                              ? s->distinct.count
+                    : (d->kind == 2 || d->kind == 3) && s->sum.count ? 1
                                                                       : 0;
+    if (total > UINT32_MAX)
+        return UD_RESOURCE;
+    uint32_t count = (uint32_t)total;
     ud_batch *payload = NULL;
     UD_TRY(ud_batch_create(s->ctx, &field, 1, count, &payload));
     ud_status status = UD_OK;
-    for (uint32_t i = 0; !status && i < count; i++)
-        status =
-            ud_batch_append(payload, d->distinct ? &s->distinct.entries[i].value : &s->extremum, 1);
+    if (d->distinct && s->distinct_spill) {
+        ud_stat_append_values append = {payload};
+        status = ud_distinct_spill_visit(s->distinct_spill, append_distinct_value, &append);
+    } else {
+        for (uint32_t i = 0; !status && i < count; i++)
+            status = ud_batch_append(payload,
+                                     d->distinct ? &s->distinct.entries[i].value : &s->extremum, 1);
+    }
     if (!status)
         status = ud_batch_seal(payload);
     uint64_t wire = 0;
@@ -211,6 +243,7 @@ ud_status ud_stat_merge(ud_aggregate_state *s, const ud_aggregate_def *d, const 
 }
 void ud_stat_clear(ud_aggregate_state *s) {
     ud_clear_value(&s->extremum);
+    ud_distinct_spill_destroy(s->distinct_spill);
     ud_value_set_clear(&s->distinct);
     ud_free(s->hll);
     memset(s, 0, sizeof(*s));

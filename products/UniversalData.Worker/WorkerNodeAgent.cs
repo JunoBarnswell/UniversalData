@@ -80,7 +80,8 @@ internal sealed class WorkerNodeAgent(
     private static WorkerNodeInventory Inventory(HostPolicy policy)
     {
         var logicalPlugins = SdkNativeSources.PluginKinds.Where(kind =>
-            SdkNativeSources.FindPluginPath(kind) is { } path && policy.Authorize(policy.Tenant, path, ConnectionAccess.Open))
+            SdkNativeSources.FindPluginPath(kind, pluginDirectories: policy.PluginRoots) is { } path &&
+            policy.Authorize(policy.Tenant, path, ConnectionAccess.Open))
             .Select(kind => "ud:" + SdkNativeSources.DriverName(kind));
         var plugins = logicalPlugins.Concat(policy.PluginRoots.Where(Directory.Exists)
             .SelectMany(path => Directory.EnumerateFiles(path, "ud_connector_*"))

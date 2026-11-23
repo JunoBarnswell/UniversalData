@@ -92,8 +92,8 @@ static ud_status bind(ud_plan *p, const ud_expression_options *bindings) {
         if (!name.length || memchr(name.data, 0, name.length))
             return UD_SCHEMA;
         static const char *allowed[] = {"function", "column",      "name",    "condition",
-                                        "distinct", "maxDistinct", "rounding"};
-        UD_TRY(ud_json_keys(def, allowed, 7));
+                                        "distinct", "maxDistinct", "rounding", "spill"};
+        UD_TRY(ud_json_keys(def, allowed, 8));
         ud_aggregate_def *a = p->aggs + i;
         a->maximum_distinct = 65536;
         a->rounding = UD_ROUND_HALF_EVEN;
@@ -105,17 +105,29 @@ static ud_status bind(ud_plan *p, const ud_expression_options *bindings) {
             UD_TRY(ud_json_text(flag, &t.data, &t.length));
             a->distinct = named(t, "true");
         }
+        const ud_json *spill = member(def, "spill");
+        if (spill) {
+            ud_string t;
+            if (ud_json_kind(spill) != UD_JSON_BOOL)
+                return UD_SCHEMA;
+            UD_TRY(ud_json_text(spill, &t.data, &t.length));
+            a->spill = named(t, "true");
+        }
+        if (a->spill && !a->distinct)
+            return UD_SCHEMA;
         const ud_json *maximum = member(def, "maxDistinct");
         if (maximum) {
             ud_string t;
             UD_TRY(ud_json_text(maximum, &t.data, &t.length));
             uint64_t v = 0;
+            uint64_t limit = a->spill ? 30000000 : 1000000;
             for (uint32_t k = 0; k < t.length; k++) {
-                if (t.data[k] < '0' || t.data[k] > '9' || v > 1000000)
+                unsigned digit = (unsigned)(t.data[k] - '0');
+                if (t.data[k] < '0' || t.data[k] > '9' || v > (limit - digit) / 10)
                     return UD_SCHEMA;
-                v = v * 10 + (unsigned)(t.data[k] - '0');
+                v = v * 10 + digit;
             }
-            if (!v || v > 1000000)
+            if (!v || v > limit)
                 return UD_SCHEMA;
             a->maximum_distinct = (uint32_t)v;
         }
@@ -156,6 +168,8 @@ static ud_status bind(ud_plan *p, const ud_expression_options *bindings) {
                                                       : -1;
         if (a->kind < 0)
             return UD_UNSUPPORTED;
+        if (a->spill && a->kind != 0 && a->kind != 1 && a->kind != 4)
+            return UD_SCHEMA;
         int at = index_of(p, column);
         if (named(column, "*") && a->kind == 0)
             a->column = UINT32_MAX;

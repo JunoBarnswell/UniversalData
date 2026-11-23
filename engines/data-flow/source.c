@@ -1,6 +1,34 @@
 #include "builtins_internal.h"
 #include "ud/sql.h"
 #include "../package/incremental.h"
+#ifdef UD_WITH_ARROW_FILES
+#include "../../connectors/parquet_scan.h"
+
+static ud_status open_parquet_scan(builtin *source, const ud_columnar_file_options *options) {
+    const ud_json *project = ud_member(source->config, "projectColumns");
+    ud_string enabled = {0};
+    if (project)
+        UD_TRY(ud_json_text(project, &enabled.data, &enabled.length));
+    int32_t bounds[] = {INT32_MIN, INT32_MAX};
+    const char *names[] = {"monthFrom", "monthBefore"};
+    for (size_t i = 0; i < 2; ++i) {
+        const ud_json *bound = ud_member(source->config, names[i]);
+        if (!bound) continue;
+        if (!ud_named(enabled, "true") || ud_json_kind(bound) != UD_JSON_NUMBER) return UD_SCHEMA;
+        ud_string text;
+        ud_value parsed;
+        UD_TRY(ud_json_text(bound, &text.data, &text.length));
+        UD_TRY(ud_value_parse(source->context.memory, UD_INT64, text.data, text.length, &parsed));
+        if (parsed.integer < INT32_MIN || parsed.integer > INT32_MAX) return UD_SCHEMA;
+        bounds[i] = (int32_t)parsed.integer;
+    }
+    if (ud_named(enabled, "true"))
+        return ud_parquet_scan_open(source->context.memory, source->path, source->schema, options,
+                                    bounds[0], bounds[1], &source->columnar_reader);
+    return ud_columnar_reader_open(source->context.memory, source->path, source->schema, options,
+                                   &source->columnar_reader);
+}
+#endif
 static ud_status sql_record(void *user, ud_batch *batch, ud_status code, uint32_t column,
                             const ud_field *fields, const ud_value *decoded, const ud_value *cells,
                             uint32_t count) {
@@ -138,7 +166,8 @@ static ud_status open_file_reader(builtin *b, uint32_t batch) {
                                             .buffers = c->execution->buffers,
                                             .check = ud_builtin_operator_check,
                                             .user = c->activation};
-        s = ud_columnar_reader_open(c->memory, b->path, b->schema, &options, &b->columnar_reader);
+        s = kind == PARQUET_SOURCE ? open_parquet_scan(b, &options) :
+            ud_columnar_reader_open(c->memory, b->path, b->schema, &options, &b->columnar_reader);
     }
 #endif
     if (!s && kind == JSON_SOURCE) {

@@ -1,0 +1,15 @@
+{
+  "name": "universaldata-local",
+  "interface": {
+    "displayName": "UniversalData 本地插件"
+  },
+  "plugins": [
+    {
+      "name": "sql-select-only",
+      "source": {
+        "source": "local",
+        "path": "./sql-select-only"
+      }
+    }
+  ]
+}

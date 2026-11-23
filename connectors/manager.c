@@ -187,13 +187,6 @@ ud_status ud_connection_definition(ud_activation *a, ud_string id, const ud_json
     }
     return UD_SCHEMA;
 }
-static ud_status definition_limit(const ud_json *d, const char *name, uint64_t fallback,
-                                  uint64_t maximum, uint64_t *out) {
-    *out = fallback;
-    if (ud_member(d, name))
-        UD_TRY(ud_json_uint(ud_member(d, name), out));
-    return *out <= maximum ? UD_OK : UD_SCHEMA;
-}
 static void track(ud_connection_lease *l) {
     struct ud_connection_manager *m = l->activation->execution->connections;
     ud_mutex_lock(&m->pool->mutex);
@@ -203,14 +196,6 @@ static void track(ud_connection_lease *l) {
     m->acquisitions++;
     ud_mutex_unlock(&m->pool->mutex);
 }
-static void clear_configuration(ud_string configuration) {
-    volatile char *secret = (volatile char *)configuration.data;
-    if (secret)
-        for (uint32_t index = 0; index < configuration.length; index++)
-            secret[index] = 0;
-    ud_free((void *)configuration.data);
-}
-
 static ud_status relay_driver_error(ud_connection_lease *lease, ud_status status) {
     ud_execution *execution = lease->activation->execution;
     ud_context *driver = execution->connections->pool->ctx;
@@ -227,63 +212,13 @@ static ud_status relay_driver_error(ud_connection_lease *lease, ud_status status
     return status;
 }
 
-static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
+static ud_status borrow_session(ud_connection_lease *l, const ud_session_binding *binding) {
     ud_execution *e = l->activation->execution;
     struct ud_connection_manager *m = e->connections;
     ud_connection_pool *pool = m->pool;
-    if (!e->options.resolve || !e->options.authorize ||
-        e->options.authorize(e->options.authorize_user, e->options.tenant, l->driver,
-                             UD_ACCESS_OPEN) != UD_OK)
-        return UD_AUTH;
-    ud_string reference;
-    UD_TRY(ud_json_string(ud_member(l->definition, "credentialReference"), &reference));
-    /* Resolve again for every lease. The SDK reference includes the source
-     * revision. The secret hash detects rotation even within one revision. */
-    ud_string configuration = {0};
-    ud_status status = e->options.resolve(e->options.resolve_user, e->ctx, e->options.tenant,
-                                          l->resource, reference, &configuration);
-    if (!status && (!configuration.data || !configuration.length ||
-                    memchr(configuration.data, 0, configuration.length)))
-        status = UD_AUTH;
-    ud_bytes identity = {.ctx = e->ctx};
-    uint8_t family[32], key[32], credential[32];
-    /* A Package connection id is logical scope, not physical identity. Two
-     * executions may borrow the same endpoint when tenant, driver, resource,
-     * credential reference and resolved credential agree. */
-    ud_string fields[] = {e->options.tenant, l->driver, l->resource};
-    for (uint32_t index = 0; !status && index < sizeof(fields) / sizeof(fields[0]); index++)
-        status = ud_put_string(&identity, fields[index].data, fields[index].length);
-    if (!status) {
-        ud_hash(identity.data, identity.size, family);
-        ud_hash(configuration.data, configuration.length, credential);
-        status = ud_put_string(&identity, reference.data, reference.length);
-    }
-    if (!status)
-        status = ud_bytes_put(&identity, credential, sizeof(credential));
-    if (!status)
-        ud_hash(identity.data, identity.size, key);
-    ud_bytes_clear(&identity);
-    uint64_t limit = 0, timeout = 0, idle = 0;
-    if (!status)
-        status = definition_limit(l->definition, "maxLeases", 8, 65536, &limit);
-    const ud_json *job_execution = ud_member(ud_member(e->package->document, "policy"), "execution");
-    const ud_json *per_source = ud_member(job_execution, "maxConnectionsPerSource");
-    if (!status && per_source) {
-        uint64_t maximum;
-        status = ud_json_uint(per_source, &maximum);
-        if (!status && (!ud_member(l->definition, "maxLeases") || limit > maximum))
-            limit = maximum;
-    }
-    if (e->max_connections_per_source && limit > e->max_connections_per_source)
-        limit = e->max_connections_per_source;
-    if (!status && !limit)
-        status = UD_SCHEMA;
-    if (!status)
-        status = definition_limit(l->definition, "acquireTimeoutMs", e->connection_wait_ms, 3600000, &timeout);
-    if (!status)
-        status = definition_limit(l->definition, "idleTimeoutMs", 30000, 3600000, &idle);
     uint64_t started = ud_now_ms();
     session *chosen = NULL;
+    ud_status status = UD_OK;
     while (!status) {
         status = check_lease(l);
         if (status)
@@ -294,9 +229,9 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
         uint64_t now = ud_now_ms();
         while (*at) {
             session *s = *at;
-            int compatible = !memcmp(s->key, key, sizeof(key));
+            int compatible = !memcmp(s->key, binding->key, sizeof(binding->key));
             if (!s->borrower && (s->unhealthy || now - s->idle_since >= s->idle_timeout ||
-                               (!compatible && !memcmp(s->family, family, sizeof(family))))) {
+                               (!compatible && !memcmp(s->family, binding->family, sizeof(binding->family))))) {
                 *at = s->next;
                 s->next = retired;
                 retired = s;
@@ -314,7 +249,7 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
             }
             at = &s->next;
         }
-        if (matching < limit && m->physical < m->capacity) {
+        if (matching < binding->max_leases && m->physical < m->capacity) {
             if (available) {
                 chosen = available;
                 m->hits++;
@@ -323,8 +258,8 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
                 if (!chosen)
                     status = UD_RESOURCE;
                 else {
-                    memcpy(chosen->key, key, sizeof(key));
-                    memcpy(chosen->family, family, sizeof(family));
+                    memcpy(chosen->key, binding->key, sizeof(binding->key));
+                    memcpy(chosen->family, binding->family, sizeof(binding->family));
                     chosen->next = pool->sessions;
                     pool->sessions = chosen;
                     pool->count++;
@@ -337,15 +272,17 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
         }
         if (chosen) {
             chosen->borrower = l;
-            chosen->idle_timeout = idle;
+            chosen->idle_timeout = binding->idle_timeout;
             m->physical++;
         } else if (!status && !retired) {
             uint64_t elapsed = ud_now_ms() - started;
-            if (!timeout || elapsed >= timeout)
-                status = timeout ? UD_TIMEOUT : UD_BUSY;
-            else
+            if (!binding->acquire_timeout || elapsed >= binding->acquire_timeout)
+                status = binding->acquire_timeout ? UD_TIMEOUT : UD_BUSY;
+            else {
+                uint64_t remaining = binding->acquire_timeout - elapsed;
                 ud_condition_wait_ms(&pool->changed, &pool->mutex,
-                                     (uint32_t)(timeout - elapsed < 25 ? timeout - elapsed : 25));
+                                     (uint32_t)(remaining < 25 ? remaining : 25));
+            }
         }
         ud_mutex_unlock(&pool->mutex);
         ud_status closed = ud_manager_pool_dispose(pool, retired);
@@ -361,6 +298,23 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
         ud_mutex_unlock(&pool->mutex);
         ud_context_clear_error(pool->ctx);
     }
+    return status;
+}
+
+static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
+    ud_execution *e = l->activation->execution;
+    ud_connection_pool *pool = e->connections->pool;
+    if (!e->options.authorize ||
+        e->options.authorize(e->options.authorize_user, e->options.tenant, l->driver,
+                             UD_ACCESS_OPEN) != UD_OK)
+        return UD_AUTH;
+    ud_session_binding binding = {0};
+    ud_string configuration = {0};
+    ud_status status = ud_manager_bind_session(e, l->definition, l->driver, l->resource,
+                                               &binding, &configuration);
+    if (!status)
+        status = borrow_session(l, &binding);
+    session *chosen = l->session;
     if (!status && !chosen->plugin) {
         char *path = ud_strdup_n(e->ctx, l->driver.data, l->driver.length);
         if (!path)
@@ -383,7 +337,7 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
             status = UD_UNSUPPORTED;
         if (!status && (info.connector->capabilities & UD_CONNECT_EXECUTE_SQL))
             status = ud_manager_pool_reserve(pool, e->ctx, e->options.tenant, l->resource,
-                                             (uint32_t)timeout, check_lease, l, &chosen->node_slot);
+                                             (uint32_t)binding.acquire_timeout, check_lease, l, &chosen->node_slot);
         ud_connection_options options = {.struct_size = sizeof(options),
                                          .abi_version = UD_ABI_VERSION,
                                          .tenant = e->options.tenant,
@@ -397,7 +351,7 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
         if (!status)
             chosen->capabilities = ud_connection_capabilities(chosen->connection);
     }
-    clear_configuration(configuration);
+    ud_manager_clear_configuration(configuration);
     if (!status && l->activation->parallel &&
         (!(chosen->plugin_capabilities & UD_CAP_THREAD_SAFE) ||
          (chosen->plugin_capabilities & UD_CAP_THREAD_AFFINE)))
@@ -487,6 +441,12 @@ static ud_status relative_file_definition(ud_context *memory, ud_json **definiti
     return status;
 }
 enum { CONNECTION_ATOMIC_SQL = 5 };
+
+static int read_only_request(uint64_t capabilities) {
+    return (capabilities & UD_CONNECT_READ) &&
+           !(capabilities & (UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
+                             UD_CONNECT_EXECUTE_SQL | UD_CONNECT_CHANGESET | UD_CONNECT_PROVISION));
+}
 
 static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps, int kind,
                                   ud_string relative, ud_connection_lease **out) {
@@ -602,8 +562,10 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
 #endif
         if (process && ud_member(l->definition, "credentialReference"))
             status = UD_SCHEMA;
-    } else if (!status)
+    } else if (!status) {
+        l->read_only = read_only_request(caps);
         status = acquire_session(l, caps);
+    }
     if (!status && (l->capabilities & caps) != caps)
         status = UD_UNSUPPORTED;
     track(l); /* Failed partial resources have the same cleanup owner. */
@@ -1960,6 +1922,10 @@ ud_status ud_connection_lease_snapshot_grant(ud_connection_lease *source, ud_act
         status = ud_json_string(ud_member(grant->definition, "driver"), &grant->driver);
     if (!status)
         status = ud_execution_resolve_driver(owner->execution, &grant->driver);
+    if (!status) {
+        grant->read_only = source->read_only;
+        grant->capabilities = source->capabilities;
+    }
     track(grant);
     if (status) {
         ud_status closed = ud_connection_lease_release(grant);

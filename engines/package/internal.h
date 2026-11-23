@@ -195,6 +195,7 @@ void ud_execution_capture_error(ud_execution *, ud_status);
 enum { UD_TASK_EXECUTED = 1, UD_TASK_DURABLE = 2, UD_TASK_UNCERTAIN = 4,
        UD_TASK_RESUMED = 8, UD_TASK_SUSPENDED = 16 };
 ud_status ud_data_flow_is_continuous(const ud_json *, int32_t *);
+int ud_analysis_snapshot_flow(const ud_json *flow);
 ud_status ud_control_task_identity(ud_context *, ud_string parent, ud_string id, ud_string *out);
 void ud_task_cancel_register(ud_activation *, void *, void (*)(void *));
 void ud_task_cancel_unregister(ud_activation *);

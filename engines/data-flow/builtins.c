@@ -449,18 +449,23 @@ static const char *configuration_schema(int kind) {
                UD_HTTP_HEADER_PROPERTIES
                "},"
                "\"required\":[\"connection\"],\"additionalProperties\":false}";
+#define UD_COLUMNAR_SOURCE_FIELDS \
+        "\"connection\":{\"type\":\"string\"},\"schema\":{\"type\":\"object\"}," \
+        "\"batchSize\":{\"type\":\"integer\"},\"partitionCount\":{\"type\":\"integer\"}," \
+        "\"partitionId\":{\"type\":\"integer\"},\"partitionBegin\":{\"type\":\"integer\"}," \
+        "\"partitionEnd\":{\"type\":\"integer\"},\"incremental\":{\"type\":\"object\"}," \
+        "\"schemaPolicy\":{\"type\":\"object\"},\"table\":{\"type\":\"string\"}," \
+        "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}"
     case PARQUET_SOURCE:
+        return "{\"type\":\"object\",\"properties\":{" UD_COLUMNAR_SOURCE_FIELDS
+               ",\"projectColumns\":{\"type\":\"boolean\"},\"monthFrom\":{\"type\":\"integer\"},"
+               "\"monthBefore\":{\"type\":\"integer\"}},\"required\":[\"connection\",\"schema\"],"
+               "\"additionalProperties\":false}";
     case IPC_SOURCE:
     case IPC_STREAM_SOURCE:
-        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
-               "\"schema\":{\"type\":\"object\"},\"batchSize\":{\"type\":\"integer\"},"
-               "\"partitionCount\":{\"type\":\"integer\"},\"partitionId\":{\"type\":\"integer\"},"
-               "\"partitionBegin\":{\"type\":\"integer\"},\"partitionEnd\":{\"type\":\"integer\"},"
-               "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
-               "\"table\":{\"type\":\"string\"},"
-               "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
-               "\"required\":"
-               "[\"connection\",\"schema\"],\"additionalProperties\":false}";
+        return "{\"type\":\"object\",\"properties\":{" UD_COLUMNAR_SOURCE_FIELDS
+               "},\"required\":[\"connection\",\"schema\"],\"additionalProperties\":false}";
+#undef UD_COLUMNAR_SOURCE_FIELDS
     case CSV_SOURCE:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
                "\"schema\":{\"type\":\"object\"},"

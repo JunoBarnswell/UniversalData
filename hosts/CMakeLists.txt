@@ -36,21 +36,19 @@ set(UD_HOST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/product)
 if(WIN32)
   set(UD_HOST_SUFFIX .exe)
   set(UD_HOST_NATIVE_NAME ud_data.dll)
-  set(UD_HOST_RUNTIME_COPY
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${ud_core_windows_runtime_DIRECTORY}" "${UD_HOST_OUTPUT}/cli"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${ud_core_windows_runtime_DIRECTORY}" "${UD_HOST_OUTPUT}/worker"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${ud_core_windows_runtime_DIRECTORY}" "${UD_HOST_OUTPUT}/management")
+  set(UD_HOST_NATIVE_PROPERTY "-p:UniversalDataNativeRuntimeDir=$<TARGET_FILE_DIR:ud_data>")
 else()
   set(UD_HOST_SUFFIX "")
   set(UD_HOST_NATIVE_NAME libud_data.so)
+  set(UD_HOST_RUNTIME_COPY
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ud_data> ${UD_HOST_OUTPUT}/cli/${UD_HOST_NATIVE_NAME}
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ud_data> ${UD_HOST_OUTPUT}/worker/${UD_HOST_NATIVE_NAME}
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ud_data> ${UD_HOST_OUTPUT}/management/${UD_HOST_NATIVE_NAME})
 endif()
 add_custom_target(ud_product_hosts ALL
-  COMMAND ${UD_DOTNET} publish ${PROJECT_SOURCE_DIR}/products/UniversalData.CommandLine/UniversalData.CommandLine.csproj -c Release -o ${UD_HOST_OUTPUT}/cli
-  COMMAND ${UD_DOTNET} publish ${PROJECT_SOURCE_DIR}/products/UniversalData.Worker/UniversalData.Worker.csproj -c Release -o ${UD_HOST_OUTPUT}/worker
-  COMMAND ${UD_DOTNET} publish ${PROJECT_SOURCE_DIR}/products/UniversalData.Management/UniversalData.Management.csproj -c Release -o ${UD_HOST_OUTPUT}/management -p:DesignerAssets=${UD_DESIGNER_OUTPUT}
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ud_data> ${UD_HOST_OUTPUT}/cli/${UD_HOST_NATIVE_NAME}
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ud_data> ${UD_HOST_OUTPUT}/worker/${UD_HOST_NATIVE_NAME}
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ud_data> ${UD_HOST_OUTPUT}/management/${UD_HOST_NATIVE_NAME}
+  COMMAND ${UD_DOTNET} publish ${PROJECT_SOURCE_DIR}/products/UniversalData.CommandLine/UniversalData.CommandLine.csproj -c Release -o ${UD_HOST_OUTPUT}/cli ${UD_HOST_NATIVE_PROPERTY}
+  COMMAND ${UD_DOTNET} publish ${PROJECT_SOURCE_DIR}/products/UniversalData.Worker/UniversalData.Worker.csproj -c Release -o ${UD_HOST_OUTPUT}/worker ${UD_HOST_NATIVE_PROPERTY}
+  COMMAND ${UD_DOTNET} publish ${PROJECT_SOURCE_DIR}/products/UniversalData.Management/UniversalData.Management.csproj -c Release -o ${UD_HOST_OUTPUT}/management -p:DesignerAssets=${UD_DESIGNER_OUTPUT} ${UD_HOST_NATIVE_PROPERTY}
   ${UD_HOST_RUNTIME_COPY}
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${UD_HOST_OUTPUT}/worker ${UD_HOST_OUTPUT}/management/worker
   DEPENDS ud_data ud_product_designer

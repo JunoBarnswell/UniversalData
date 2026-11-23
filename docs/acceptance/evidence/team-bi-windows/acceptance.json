@@ -1,0 +1,142 @@
+{
+  "testedOn": "2026-11-23",
+  "platform": "Windows x64",
+  "nativeVersion": "12.0.0",
+  "checkoutBase": "23ec8f3",
+  "windowsLoader": {
+    "observedFailures": [
+      {
+        "time": "+08:00 17:32:04",
+        "process": "test_metric_expression.exe",
+        "dll": "icuuc79.dll"
+      },
+      {
+        "time": "+08:00 17:46:43",
+        "process": "ud_worker.dll / UniversalData.Management.dll",
+        "dll": "ud_data",
+        "code": "0x8007007E"
+      },
+      {
+        "time": "+08:00 17:48:39",
+        "process": "test_metric_distinct.exe",
+        "dll": "icuuc79.dll"
+      }
+    ],
+    "applicationLocalTests": "passed",
+    "sqlPluginProcesses": 6,
+    "searchPath": "Windows/System32;Windows",
+    "remediatedChecks": [
+      "Full product Management, Worker and CLI Native load",
+      "Direct launch of each standalone Compute test",
+      "SQLite connector reached through a Unicode Windows directory",
+      "CSV/XLSX upload, publication and authenticated report read",
+      "Hosted Worker looks up database drivers in the authorized plugin directory when published elsewhere"
+    ],
+    "ctestRuntimeSeconds": 23.6
+  },
+  "nativeCtest": {
+    "passed": 6,
+    "names": [
+      "columnar",
+      "compute_plan",
+      "metric_exact_distinct_spill",
+      "metric_decimal_derives",
+      "sqlite_receipts_upsert",
+      "advanced_native_semantics"
+    ]
+  },
+  "teamDashboard": {
+    "database": "SQLite",
+    "api": "passed",
+    "edge": "passed",
+    "monthlyAmount": "150.00",
+    "exactDistinctOrders": 1,
+    "refreshedAmount": "170.00",
+    "covered": [
+      "metric derivation and zero division",
+      "calendar month comparison",
+      "sharing with a separate viewer",
+      "pinned release and reload",
+      "drill/export authorization and revocation",
+      "operational manual refresh",
+      "hourly schedule retained across restart and a real one-minute schedule published a new release"
+    ]
+  },
+  "immutableQueryRegression": {
+    "database": "SQLite",
+    "rows": 100000,
+    "checkedBy": "authenticated Management API and Native Worker",
+    "coldSecondsRange": [1.51, 1.89],
+    "repeatedSecondsRange": [0.09, 0.10],
+    "eightConcurrentSecondsRange": [1.40, 2.30],
+    "cachedResultAfterShardCorruptionHttp": 422,
+    "cachedResultAfterRevocationHttp": 403
+  },
+  "scale": {
+    "database": "SQLite",
+    "rows": 30000000,
+    "fixture": {
+      "index": "n = 0 to 29,999,999 inclusive, inserted in ascending order",
+      "orderid": "integer division n / 2, stored as text",
+      "orderdate": "2026-10-02 if n % 3 == 0, otherwise 2026-11-02",
+      "region": "East if n % 2 == 0, otherwise West",
+      "amount": "1.25",
+      "currency": "CNY",
+      "cards": ["amount with previous month", "distinct orders", "rows", "amount per distinct order", "amount by region", "amount by day"]
+    },
+    "firstPublish": {
+      "state": "published",
+      "seconds": 768.870336,
+      "release": "3",
+      "parquetFiles": 8,
+      "parquetBytes": 699841610
+    },
+    "manualRefresh": {
+      "state": "published",
+      "seconds": 734.493796,
+      "release": "4",
+      "targetSeconds": 1800,
+      "parquetFiles": 8,
+      "parquetBytes": 699841610,
+      "contentHashesMatchPreviousRelease": true,
+      "sha256OfSortedUppercaseShardHashesJoinedByLf": "12B88DD95390EB135CEE91FA9416E1D2D7CC5D3CC0F503132847DA01046AEEDF"
+    },
+    "combinedQueryObservation": {
+      "status": "HTTP 422",
+      "nativeCode": 4,
+      "seconds": 59.6122605
+    },
+    "queryWithAuthorizedScratch": {
+      "state": "API returned all six card results",
+      "coldSeconds": 892.8684073,
+      "repeatSecondsWithConcurrentBrowsers": 8.9081371,
+      "cleanup": "scratch removed after execution",
+      "checkedAgainst": "independent SQLite current-month and previous-month aggregation",
+      "currentRows": 20000000,
+      "currentOrders": 15000000,
+      "currentAmount": "25000000.00",
+      "averageAmountPerOrder": "1.666667",
+      "previousAmount": "12500000.00",
+      "changeRate": "1"
+    },
+    "browserObservation": {
+      "independentlyAuthenticatedUsers": 50,
+      "cardsPerDashboard": 6,
+      "completedFirstRenders": 0,
+      "deadlineSeconds": 180,
+      "p95Seconds": null
+    },
+    "browserInitialRenderWithAuthorizedScratch": {
+      "clientAndServer": "same Windows machine, Core i5-10400, 12 logical processors, 31.8 GiB RAM",
+      "independentlyAuthenticatedUsers": 50,
+      "cardsPerDashboard": 6,
+      "initialQueryAlreadyCached": true,
+      "completedFirstRenders": 50,
+      "minimumSeconds": 27.7402544,
+      "p95Seconds": 30.7958284,
+      "maximumSeconds": 30.8740107,
+      "targetSeconds": 3,
+      "filterSamplesFromThisRun": "discarded because the test did not select the intended category"
+    }
+  }
+}

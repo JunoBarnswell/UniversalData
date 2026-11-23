@@ -78,8 +78,9 @@ def assemble(args):
     with tempfile.TemporaryDirectory(prefix="ud-sdk-pack-") as folder:
         root = Path(folder)
         worker = root / "worker"
+        native_property = [f"-p:UniversalDataNativeRuntimeDir={args.native.resolve()}"] if args.rid == "win-x64" else []
         subprocess.run(["dotnet", "publish", str(WORKER), "-c", "Release", "-r", args.rid,
-                        "--self-contained", "true", "-o", str(worker)], cwd=ROOT, check=True)
+                        "--self-contained", "true", "-o", str(worker), *native_property], cwd=ROOT, check=True)
         native = root / "native"
         native.mkdir()
         shutil.copyfile(args.native / library, native / library)

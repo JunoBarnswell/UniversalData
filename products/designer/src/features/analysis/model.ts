@@ -30,6 +30,7 @@ export interface Model {
   allowEmptyAmount: boolean;
   confirmSingleCurrency: boolean;
   confirmLineAmount: boolean;
+  metrics?: MetricDefinition[];
 }
 export interface Dataset {
   id: string;
@@ -52,9 +53,23 @@ export interface Preview {
 export interface Measure {
   id: string;
   label: string;
-  calculation: string;
-  fieldId: string | null;
-  unit: string | null;
+  calculation?: string;
+  fieldId?: string | null;
+  unit?: string | null;
+  operation?: MetricOperation;
+  left?: string | null;
+  right?: string | null;
+}
+
+export type MetricOperation = "count" | "sum" | "distinct" | "add" | "subtract" | "divide";
+export interface MetricDefinition {
+  id: string;
+  label: string;
+  operation: MetricOperation;
+  fieldId?: string;
+  left?: string;
+  right?: string;
+  unit?: string;
 }
 export interface Release {
   id: string;
@@ -130,6 +145,85 @@ export interface SavedReport {
   chart: Chart;
   chartMeasure: string | null;
 }
+
+export type DashboardChart = "kpi" | "line" | "bar" | "table";
+export type Comparison = "none" | "mom" | "yoy";
+
+export interface DashboardCard {
+  id: string;
+  title: string;
+  chart: DashboardChart;
+  measureId: string;
+  dimensions: Dimension[];
+  comparison: Comparison;
+}
+
+export interface DashboardMember {
+  subject: string;
+  details: boolean;
+  export: boolean;
+}
+
+export interface Dashboard {
+  id: string;
+  name: string;
+  datasetId: string;
+  revision: string;
+  publishedRevision: string | null;
+  owner: boolean;
+  cards: DashboardCard[];
+  members: DashboardMember[];
+  details: boolean;
+  export: boolean;
+  fields: Rule[];
+  measures: Measure[];
+  dataAsOf: string | null;
+  releaseId: string | null;
+}
+
+export interface DashboardPage {
+  items: Dashboard[];
+  nextCursor: string | null;
+}
+
+export interface DashboardCardResult {
+  id: string;
+  current: ReportResult;
+  previous: ReportResult | null;
+  delta: string | null;
+  changeRate: string | null;
+}
+
+export interface DashboardQueryResult {
+  revision: string;
+  releaseId: string;
+  dataAsOf: string | null;
+  cards: DashboardCardResult[];
+}
+
+export type DashboardDrillResult = Details;
+
+export interface RefreshSchedule {
+  revision: string;
+  enabled: boolean;
+  intervalMinutes: number;
+  nextDueAt: string | null;
+}
+
+export interface RefreshJob {
+  operationId: string;
+  state: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+  releaseId: string | null;
+}
+
+export interface DashboardFilterState {
+  month: string;
+  categoryFieldId: string;
+  categoryValue: string;
+}
 export const roles: {value: Role; label: string}[] = [
   {value: "text", label: "明细文本"},
   {value: "category", label: "分类"},
@@ -140,3 +234,4 @@ export const roles: {value: Role; label: string}[] = [
   {value: "omit", label: "停用"},
 ];
 export const datasetPath = (id: string) => `/analysis/datasets/${encodeURIComponent(id)}`;
+export const dashboardPath = (id: string) => `/analysis/dashboards/${encodeURIComponent(id)}`;

@@ -22,6 +22,12 @@ typedef struct cursor {
     ud_buffer_view *view;
     uint32_t row;
 } cursor;
+/* Keep the hot path in memory only while its group cardinality is small.  Once
+ * this bound is crossed, publish the exact partial state to the existing sort
+ * operator; that preserves sorted output and its spill/fan-in behavior for
+ * high-cardinality inputs. */
+#define UD_HASH_GROUP_LIMIT 4096u
+#define UD_HASH_GROUP_BYTES_LIMIT (8u * 1024u * 1024u)
 struct ud_operator {
     ud_relational *relational;
     ud_window *window;
@@ -44,8 +50,9 @@ struct ud_operator {
     ud_batch *pending;
     uint32_t pending_row;
     ud_value *group_keys;
-    int group_active, input_done, saw_group;
+    int group_active, input_done, saw_group, scalar_published, hash_grouping;
 };
+static int hash_group_eligible(const ud_plan *, int raw_aggregation);
 ud_status ud_operator_lookup_observe(ud_operator *o, const ud_batch *observations) {
     if (!o || o->options.kind != UD_OPERATOR_CACHE_LOOKUP)
         return UD_INVALID;
@@ -393,6 +400,8 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
         o->group_keys = !s ? ud_alloc(ctx, (sort.key_count + 1) * sizeof(*o->group_keys)) : NULL;
         if (!s && !o->group_keys)
             s = UD_RESOURCE;
+        if (!s)
+            o->hash_grouping = hash_group_eligible(options->aggregation, o->raw_aggregation);
     } else if (!s)
         s = copy_schema(ctx, inputs[0], 0, &o->schema);
     if (!s && options->kind != UD_OPERATOR_AGGREGATE) {
@@ -470,7 +479,7 @@ static ud_status partition_quantum(void *user, uint32_t index) {
     }
     if (!status && o->options.kind == UD_OPERATOR_AGGREGATE) {
         ud_accumulator *partial = NULL;
-        status = ud_accumulator_create(o->options.aggregation, &partial);
+        status = ud_accumulator_create_with_buffers(o->options.aggregation, o->options.buffers, &partial);
         if (!status)
             status = ud_accumulator_add(partial, piece);
         if (!status)
@@ -538,6 +547,75 @@ static ud_status publish_sorted(ud_operator *o, ud_batch *batch) {
             UD_TRY(ud_batch_get(batch, batch->rows - 1, o->keys[i], o->run_bounds + n + i));
     }
     return UD_OK;
+}
+
+static int scalar_aggregate(const ud_operator *o) {
+    return o->options.kind == UD_OPERATOR_AGGREGATE && o->options.aggregation &&
+           !o->options.aggregation->key_n;
+}
+
+static int hash_group_eligible(const ud_plan *p, int raw_aggregation) {
+    if (!p || !p->key_n || raw_aggregation)
+        return 0;
+    /* Distinct states retain every value and raw floating-point aggregation
+     * intentionally preserves source order; neither can use this bounded
+     * single accumulator without changing memory or numeric semantics.  The
+     * remaining operations use fixed-size exact accumulator state; min/max
+     * keeps a dynamically owned extremum and therefore stays on the existing
+     * sorted path as well. */
+    for (uint32_t i = 0; i < p->agg_n; i++)
+        if (p->aggs[i].distinct || p->aggs[i].kind == 5 ||
+            (p->aggs[i].kind != 0 && p->aggs[i].kind != 1 && p->aggs[i].kind != 4))
+            return 0;
+    return 1;
+}
+
+static uint64_t hash_group_bytes_limit(const ud_operator *o) {
+    uint64_t limit = o->options.memory_budget ? o->options.memory_budget / 2
+                                               : UD_HASH_GROUP_BYTES_LIMIT;
+    if (!limit)
+        limit = 1;
+    if (limit > UD_HASH_GROUP_BYTES_LIMIT)
+        limit = UD_HASH_GROUP_BYTES_LIMIT;
+    return limit;
+}
+
+static ud_status hash_group_to_sort(ud_operator *o) {
+    if (!o->group) {
+        o->hash_grouping = 0;
+        return UD_OK;
+    }
+    ud_batch *partial = NULL;
+    ud_status status = ud_accumulator_partial_snapshot(o->group, &partial);
+    if (!status)
+        status = ud_operator_push(o->group_sort, 0, partial);
+    ud_batch_destroy(partial);
+    if (status)
+        return status;
+    ud_accumulator_destroy(o->group);
+    o->group = NULL;
+    o->hash_grouping = 0;
+    return UD_OK;
+}
+
+static ud_status push_hashed_group(ud_operator *o, const ud_batch *input) {
+    if (!o->group)
+        UD_TRY(ud_accumulator_create_with_buffers(o->options.aggregation, o->options.buffers,
+                                                  &o->group));
+    UD_TRY(ud_accumulator_add(o->group, input));
+    if (ud_accumulator_group_count(o->group) > UD_HASH_GROUP_LIMIT ||
+        ud_accumulator_group_bytes(o->group) > hash_group_bytes_limit(o))
+        return hash_group_to_sort(o);
+    return UD_OK;
+}
+
+static ud_status push_scalar_aggregate(ud_operator *o, const ud_batch *input) {
+    if (!o->group) {
+        UD_TRY(ud_accumulator_create_with_buffers(o->options.aggregation, o->options.buffers,
+                                                  &o->group));
+        o->saw_group = 1;
+    }
+    return ud_accumulator_add(o->group, input);
 }
 
 static ud_status parallel_push(ud_operator *o, uint32_t port, const ud_batch *input) {
@@ -612,7 +690,11 @@ static ud_status operator_push(ud_operator *o, uint32_t port, const ud_batch *in
     UD_TRY(check(o));
     UD_TRY(compatible(o->inputs[port], input));
     ud_status status = UD_OK;
-    if (o->raw_aggregation)
+    if (scalar_aggregate(o))
+        status = push_scalar_aggregate(o, input);
+    else if (o->hash_grouping)
+        status = push_hashed_group(o, input);
+    else if (o->raw_aggregation)
         status = ud_operator_push(o->group_sort, 0, input);
     else
         status = parallel_push(o, port, input);
@@ -634,10 +716,29 @@ static ud_status operator_end(ud_operator *o, uint32_t port) {
     UD_TRY(check(o));
     o->port_ended[port] = 1;
     o->ended++;
+    if (scalar_aggregate(o))
+        return UD_OK;
+    if (o->hash_grouping)
+        UD_TRY(hash_group_to_sort(o));
     return o->group_sort ? ud_operator_finish_input(o->group_sort, 0) : UD_OK;
 }
 
 static ud_status aggregate_pull(ud_operator *o, ud_batch **out) {
+    if (scalar_aggregate(o)) {
+        if (o->scalar_published)
+            return UD_END;
+        if (!o->group) {
+            UD_TRY(ud_accumulator_create_with_buffers(o->options.aggregation, o->options.buffers,
+                                                      &o->group));
+            o->saw_group = 1;
+        }
+        ud_status status = ud_accumulator_snapshot(o->group, out);
+        ud_accumulator_destroy(o->group);
+        o->group = NULL;
+        if (!status)
+            o->scalar_published = 1;
+        return status;
+    }
     UD_TRY(copy_schema(o->ctx, o->schema, o->options.max_batch_rows, out));
     ud_plan *p = o->options.aggregation;
     ud_value *values = ud_alloc(o->ctx, o->schema->columns * sizeof(*values));
@@ -702,7 +803,7 @@ static ud_status aggregate_pull(ud_operator *o, ud_batch **out) {
         }
         if (o->input_done) {
             if (!p->key_n && !o->saw_group) {
-                s = ud_accumulator_create(p, &o->group);
+                s = ud_accumulator_create_with_buffers(p, o->options.buffers, &o->group);
                 o->group_active = !s;
                 o->saw_group = 1;
                 continue;
@@ -710,7 +811,7 @@ static ud_status aggregate_pull(ud_operator *o, ud_batch **out) {
             break;
         }
         if (!o->group_active) {
-            s = ud_accumulator_create(p, &o->group);
+            s = ud_accumulator_create_with_buffers(p, o->options.buffers, &o->group);
             for (uint32_t i = 0; !s && i < p->key_n; i++) {
                 ud_value key;
                 s = ud_batch_get(o->pending, o->pending_row, o->raw_aggregation ? p->keys[i] : i,

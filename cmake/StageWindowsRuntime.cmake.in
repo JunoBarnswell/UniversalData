@@ -14,8 +14,14 @@ set(external_dlls [=[@runtime_EXTERNAL_DLLS@]=])
 # Inspect the linked binaries in a directory containing only those binaries.
 # Previously staged app-local DLLs must not override the current SDK paths.
 set(images "${staged_directory}-pe")
+if(DEFINED test_executable)
+  get_filename_component(build_directory "${test_executable}" DIRECTORY)
+  # Component-only tests share their output directory and may link concurrently.
+  file(LOCK "${staged_directory}.lock" TIMEOUT 120)
+  set(EXECUTABLES "${test_executable}")
+endif()
 file(MAKE_DIRECTORY "${images}" "${staged_directory}" "${build_directory}")
-foreach(kind LIBRARIES MODULES)
+foreach(kind EXECUTABLES LIBRARIES MODULES)
   set(inputs ${${kind}})
   set(${kind})
   foreach(input IN LISTS inputs)
@@ -26,6 +32,7 @@ foreach(kind LIBRARIES MODULES)
 endforeach()
 
 file(GET_RUNTIME_DEPENDENCIES
+  EXECUTABLES ${EXECUTABLES}
   LIBRARIES ${LIBRARIES}
   MODULES ${MODULES} ${data_dlls}
   DIRECTORIES ${runtime_dirs}
@@ -37,6 +44,9 @@ file(GET_RUNTIME_DEPENDENCIES
   PRE_EXCLUDE_REGEXES "^(api|ext)-ms-win-" "^(msvcp|vcruntime|concrt)[0-9]+(_[a-z0-9_]+)?[.]dll$"
     "^msodbcsql[0-9]+[.]dll$"
   POST_EXCLUDE_REGEXES "[/\\\\]([Ss][Yy][Ss][Tt][Ee][Mm]32|[Ss][Yy][Ss][Ww][Oo][Ww]64|[Ww][Ii][Nn][Ss][Xx][Ss])[/\\\\]")
+if(DEFINED test_executable)
+  file(REMOVE ${EXECUTABLES})
+endif()
 if(missing)
   message(FATAL_ERROR "@name@: missing Windows runtime DLLs: ${missing}. Point UD_WINDOWS_RUNTIME_DIRS at the matching SDK runtime directories.")
 endif()
@@ -58,12 +68,19 @@ foreach(library IN LISTS resolved data_dlls)
   get_filename_component(filename "${library}" NAME)
   string(TOLOWER "${filename}" filename)
   file(COPY_FILE "${library}" "${build_directory}/${filename}" ONLY_IF_DIFFERENT)
+  if(DEFINED test_executable)
+    continue()
+  endif()
   if(NOT filename IN_LIST external_dlls)
     set(staged "${staged_directory}/${filename}")
     file(COPY_FILE "${library}" "${staged}" ONLY_IF_DIFFERENT)
     list(REMOVE_ITEM previous "${staged}")
   endif()
 endforeach()
+if(DEFINED test_executable)
+  # Other tests in this directory can import a different set of libraries.
+  return()
+endif()
 foreach(stale IN LISTS previous)
   get_filename_component(filename "${stale}" NAME)
   file(REMOVE "${stale}" "${build_directory}/${filename}")

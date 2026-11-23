@@ -214,7 +214,7 @@ static ud_status bind_value(oracle *p, OCIStmt *stmt, uint32_t at, const ud_valu
     }
     return s;
 }
-static ud_status bind(oracle *p, OCIStmt *stmt, const ud_batch *b, uint32_t row,
+static ud_status bind_parameters(oracle *p, OCIStmt *stmt, const ud_batch *b, uint32_t row,
                       const ud_write_options *options, const ud_sql_statement *plan, cell **out) {
     *out = NULL;
     uint32_t n = plan ? plan->parameter_count : b ? p->host.columns(b) : 0;
@@ -542,7 +542,7 @@ ud_status ud_oci_read_open(void *state, const ud_read_options *o, const ud_batch
         s = UD_UNSUPPORTED;
     cell *parameters = NULL;
     if (!s)
-        s = bind(p, p->cursor, o->parameters, o->parameter_row, NULL, NULL, &parameters);
+        s = bind_parameters(p, p->cursor, o->parameters, o->parameter_row, NULL, NULL, &parameters);
     if (!s)
         s = execute_statement(p, p->cursor, 0, NULL);
     cells_clear(p, parameters, o->parameters ? p->host.columns(o->parameters) : 0);
@@ -1292,7 +1292,7 @@ static ud_status execute(void *state, const ud_read_options *o, uint64_t *affect
     uint32_t count = o->parameters ? p->host.rows(o->parameters) : 1;
     for (uint32_t row = 0; !s && row < count; row++) {
         cell *values = NULL;
-        s = bind(p, stmt, o->parameters, row, NULL, NULL, &values);
+        s = bind_parameters(p, stmt, o->parameters, row, NULL, NULL, &values);
         uint64_t n = 0;
         if (!s)
             s = execute_statement(p, stmt, 1, &n);
@@ -1552,7 +1552,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s)
             s = statement(p, plan.sql, &stmt);
         if (!s)
-            s = bind(p, stmt, b, 0, o, &plan, &values);
+            s = bind_parameters(p, stmt, b, 0, o, &plan, &values);
         uint64_t physical = 0;
         if (!s)
             s = execute_statement(p, stmt, 1, &physical);
@@ -1860,7 +1860,7 @@ ud_status ud_oci_state_command(oracle *p, const ud_read_options *options) {
     cell *values = NULL;
     ud_status status = statement(p, options->sql, &stmt);
     if (!status)
-        status = bind(p, stmt, options->parameters, 0, NULL, NULL, &values);
+        status = bind_parameters(p, stmt, options->parameters, 0, NULL, NULL, &values);
     if (!status)
         status = execute_statement(p, stmt, 1, NULL);
     cells_clear(p, values, options->parameters ? p->host.columns(options->parameters) : 0);

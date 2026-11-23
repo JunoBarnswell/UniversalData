@@ -12,9 +12,11 @@ typedef struct group {
 } group;
 struct ud_accumulator {
     const ud_plan *plan;
+    ud_buffer_manager *buffers;
     group *head, *tail;
     group **buckets;
     uint32_t groups, bucket_count;
+    uint64_t group_bytes;
     int failed;
 };
 ud_status ud_plan_schema(const ud_plan *p, const ud_field **f, uint32_t *n) {
@@ -51,6 +53,25 @@ static void clear_values(ud_value *v, uint32_t n) {
     for (uint32_t i = 0; i < n; i++)
         ud_clear_value(v + i);
     ud_free(v);
+}
+static uint64_t value_storage_bytes(const ud_value *value) {
+    if (!value || value->is_null)
+        return 0;
+    uint64_t bytes = 0;
+    if (value->type == UD_UTF8 || value->type == UD_BINARY)
+        bytes = value->text_length;
+    if (value->type >= UD_STRUCT) {
+        if (value->child_count > (UINT64_MAX - bytes) / sizeof(ud_value))
+            return UINT64_MAX;
+        bytes += (uint64_t)value->child_count * sizeof(ud_value);
+        for (uint32_t i = 0; i < value->child_count; i++) {
+            uint64_t child = value_storage_bytes(value->children + i);
+            if (child > UINT64_MAX - bytes)
+                return UINT64_MAX;
+            bytes += child;
+        }
+    }
+    return bytes;
 }
 static ud_field input_field(const ud_plan *p, uint32_t i) {
     return p->aggs[i].column == UINT32_MAX
@@ -133,9 +154,46 @@ static ud_status new_group(ud_accumulator *a, const ud_batch *b, uint32_t row, u
     }
     for (uint32_t i = 0; i < p->agg_n; i++) {
         g->states[i].ctx = p->ctx;
+        g->states[i].buffers = a->buffers;
         g->values[p->key_n + i] =
             (ud_value){.type = p->output_schema->column[p->key_n + i].field.type,
                        .is_null = p->aggs[i].kind != 0 && p->aggs[i].kind != 5};
+        if (a->buffers && p->aggs[i].distinct && p->aggs[i].spill) {
+            const ud_field *field = &p->fields[p->aggs[i].column];
+            ud_status status = ud_distinct_spill_create(p->ctx, a->buffers, field,
+                                                        p->aggs[i].maximum_distinct,
+                                                        &g->states[i].distinct_spill);
+            if (status) {
+                clear_values(g->values, n);
+                for (uint32_t k = 0; g->states && k < p->agg_n; k++)
+                    ud_stat_clear(g->states + k);
+                ud_free(g->states);
+                ud_free(g);
+                return status;
+            }
+        }
+    }
+    uint64_t group_bytes = sizeof(*g) + (uint64_t)n * sizeof(*g->values) +
+                           (uint64_t)p->agg_n * sizeof(*g->states);
+    for (uint32_t i = 0; i < p->key_n; i++) {
+        uint64_t value_bytes = value_storage_bytes(g->values + i);
+        if (value_bytes > UINT64_MAX - group_bytes) {
+            clear_values(g->values, n);
+            for (uint32_t k = 0; g->states && k < p->agg_n; k++)
+                ud_stat_clear(g->states + k);
+            ud_free(g->states);
+            ud_free(g);
+            return UD_RESOURCE;
+        }
+        group_bytes += value_bytes;
+    }
+    if (group_bytes > UINT64_MAX - a->group_bytes) {
+        clear_values(g->values, n);
+        for (uint32_t k = 0; g->states && k < p->agg_n; k++)
+            ud_stat_clear(g->states + k);
+        ud_free(g->states);
+        ud_free(g);
+        return UD_RESOURCE;
     }
     g->hash = hash;
     ud_status indexed = index_group(a, g);
@@ -153,16 +211,19 @@ static ud_status new_group(ud_accumulator *a, const ud_batch *b, uint32_t row, u
         a->head = g;
     a->tail = g;
     a->groups++;
+    a->group_bytes += group_bytes;
     *out = g;
     return UD_OK;
 }
-ud_status ud_accumulator_create(const ud_plan *p, ud_accumulator **out) {
+ud_status ud_accumulator_create_with_buffers(const ud_plan *p, ud_buffer_manager *buffers,
+                                             ud_accumulator **out) {
     if (!p || !out || !p->agg_n)
         return UD_INVALID;
     *out = ud_alloc(p->ctx, sizeof(**out));
     if (!*out)
         return UD_RESOURCE;
     (*out)->plan = p;
+    (*out)->buffers = buffers;
     ud_status retained = ud_plan_retain((ud_plan *)p);
     if (retained) {
         ud_free(*out);
@@ -179,6 +240,15 @@ ud_status ud_accumulator_create(const ud_plan *p, ud_accumulator **out) {
         }
     }
     return UD_OK;
+}
+ud_status ud_accumulator_create(const ud_plan *p, ud_accumulator **out) {
+    return ud_accumulator_create_with_buffers(p, NULL, out);
+}
+uint32_t ud_accumulator_group_count(const ud_accumulator *a) {
+    return a ? a->groups : 0;
+}
+uint64_t ud_accumulator_group_bytes(const ud_accumulator *a) {
+    return a ? a->group_bytes : 0;
 }
 void ud_accumulator_destroy(ud_accumulator *a) {
     if (!a)

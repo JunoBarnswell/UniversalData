@@ -36,6 +36,7 @@ def main():
     parser.add_argument("--library", nargs="+", required=True, type=lambda path: Path(path).resolve())
     parser.add_argument("--version", required=True)
     parser.add_argument("--plugins", nargs="*", default=[], type=lambda path: Path(path).resolve())
+    parser.add_argument("--executables", nargs="*", default=[], type=lambda path: Path(path).resolve())
     parser.add_argument("--child", action="store_true")
     args = parser.parse_args()
     if args.child:
@@ -44,12 +45,18 @@ def main():
 
     windows = Path(os.environ["SystemRoot"])
     environment = {**os.environ, "PATH": os.pathsep.join((str(windows / "System32"), str(windows)))}
+    c.windll.kernel32.SetErrorMode(0x8003)
+    for executable in args.executables:
+        subprocess.run([str(executable)], cwd=windows, env=environment, timeout=60, check=True)
     for index, library in enumerate(args.library):
         # Separate processes prevent a previously loaded DLL from masking a missing file.
         plugins = args.plugins if index == 0 else []
-        subprocess.run([sys.executable, "-I", __file__, "--child", "--library", str(library),
-                        "--version", args.version, "--plugins", *(str(path) for path in plugins)],
-                       cwd=windows, env=environment, timeout=20, check=True)
+        command = [sys.executable, "-I", __file__, "--child", "--library", str(library), "--version", args.version]
+        if plugins:
+            for path in plugins:
+                subprocess.run([*command, "--plugins", str(path)], cwd=windows, env=environment, timeout=20, check=True)
+        else:
+            subprocess.run(command, cwd=windows, env=environment, timeout=20, check=True)
         print(f"{library} loaded with system-only PATH ({len(plugins)} SQL plugins)")
 
 

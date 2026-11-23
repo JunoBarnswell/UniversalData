@@ -164,4 +164,21 @@ Studio 的「我的分析」和 `EtlManagementClient` 使用同一组 `/api/anal
 
 用户可从订单样例、CSV、单工作表 Excel 或已登记的固定快照建模。文件限制为 50 MiB、10 万条记录和 64 列。Excel 使用一行唯一表头，公式需先转换为值，订单号需保存在文本单元格中。金额使用 Decimal，币种和行金额含义由用户确认。
 
-发布在 Native Package 中完成全量核对和原子文件提交。各种来源都生成同一种 Native NDJSON 版本，Catalog 通过条件更新发布指针。重复提交时沿用原操作 ID 和期望版本。`QueryAnalysisAsync` 返回固定发布版本的查询上下文，`DrillAnalysisAsync` 和 `ExportAnalysisAsync` 使用该上下文并重新检查权限。集群部署需为可接管 Management 的节点提供相同的分析资产存储视图。
+发布时 Native Package 执行全量核对并提交数据文件，Catalog 通过条件更新切换发布指针。查询支持读取历史 NDJSON 版本。重复提交时沿用原操作 ID 和期望版本。`QueryAnalysisAsync` 返回固定发布版本的查询上下文，`DrillAnalysisAsync` 和 `ExportAnalysisAsync` 使用该上下文并重新检查权限。集群部署需为可接管 Management 的节点提供相同的分析资产存储视图。
+
+## 团队看板与数据库刷新
+
+数据库表及视图在宿主租户策略的 `analysisSqlSources` 中登记。接入、指标口径、分享和版本行为见[团队看板](product/team-bi.md)。
+
+下列资源都以 `/api/analysis` 为前缀。修改草稿、发布、成员授权和刷新计划时提交服务端上次返回的 `expectedRevision`。冲突返回 HTTP 409，读取当前修订后可重新提交。交互式 HTTP 客户端从登录会话取得 `X-UD-CSRF`。SDK 使用 `EtlManagementClient`。
+
+| 操作 | HTTP 资源 | 请求或响应 |
+| --- | --- | --- |
+| 浏览与打开 | GET `/dashboards?after={cursor}`、GET `/dashboards/{id}` | 列表返回 `items` 和 `nextCursor`。未发布草稿仅作者可见 |
+| 创建 | POST `/dashboards` | `AnalysisDashboardCreate`，提交名称、已发布的数据集标识和卡片 |
+| 编辑和发布 | PUT `/dashboards/{id}/draft`、POST `/dashboards/{id}/publish` | `AnalysisDashboardDraft`、`AnalysisRevision` |
+| 替换成员授权 | PUT `/dashboards/{id}/members` | `AnalysisDashboardAccessWrite`，为每位成员分别指定 `details` 和 `export` |
+| 查询 | POST `/dashboards/{id}/query` | `AnalysisDashboardQuery`，含看板修订、筛选和可选的数据版本。每张卡片具有独立的查询上下文 |
+| 下钻和导出 | POST `/dashboards/{id}/drill`、POST `/dashboards/{id}/export` | 提交卡片的 `context` 和可选单元格坐标。明细游标绑定原上下文和坐标，导出返回 CSV |
+| 配置调度 | GET 或 PUT `/datasets/{id}/refresh-schedule` | 读取或保存启用状态和间隔分钟数，默认 60 分钟 |
+| 提交及查询刷新 | POST `/datasets/{id}/refresh`、GET `/datasets/{id}/refreshes?after={cursor}` | 提交 32 位小写十六进制 GUID `operationId`。状态可为 `checking`、`published`、`rejected` 或调度错过的 `missed` |

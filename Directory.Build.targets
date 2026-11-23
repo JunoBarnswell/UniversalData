@@ -1,4 +1,14 @@
 <Project>
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT' And ('$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'win-x64') And ('$(MSBuildProjectName)' == 'UniversalData.Management' Or '$(MSBuildProjectName)' == 'UniversalData.Worker' Or '$(MSBuildProjectName)' == 'UniversalData.CommandLine')">
+    <UniversalDataWindowsHost>true</UniversalDataWindowsHost>
+    <UniversalDataNativeRuntimeDir Condition="'$(UniversalDataNativeRuntimeDir)' == ''">$(MSBuildThisFileDirectory)build\vs2026\$(Configuration)</UniversalDataNativeRuntimeDir>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UniversalDataWindowsHost)' == 'true'">
+    <None Include="$(UniversalDataNativeRuntimeDir)\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="IfDifferent" CopyToPublishDirectory="IfDifferent" Pack="false" />
+  </ItemGroup>
+  <Target Name="ValidateUniversalDataHostRuntime" BeforeTargets="GetCopyToOutputDirectoryItems;ComputeFilesToPublish" Condition="'$(UniversalDataWindowsHost)' == 'true' And '$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(UniversalDataNativeRuntimeDir)\ud_data.dll')" Text="Missing x64 native runtime in $(UniversalDataNativeRuntimeDir). Build the ud_core_windows_runtime CMake target, then set UniversalDataNativeRuntimeDir to its native binary directory." />
+  </Target>
   <ItemGroup Condition="'$(UniversalDataVsSolution)' == 'true'">
     <None Include="$(UniversalDataVsNativeLibrary)" Link="ud_data.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" Pack="false" />
     <None Include="$(MSBuildThisFileDirectory)build\vs2026\windows-runtime\$(Configuration)\ud_core_windows_runtime\*.dll"

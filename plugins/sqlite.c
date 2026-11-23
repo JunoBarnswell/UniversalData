@@ -16,6 +16,7 @@ typedef struct {
     void *control_user;
     ud_status (*check)(void *);
     int transaction, cleaning, record_code;
+    int read_only_scan;
     char branch_id[65];
     uint8_t branch_digest[32];
 } sqlite_state;
@@ -322,6 +323,12 @@ static ud_status connector_read_close(void *state) {
     p->cursor_finished = 1;
     p->cursor_scalar = 0;
     p->cursor_pending = 0;
+    if (p->read_only_scan) {
+        int query_only = sqlite3_exec(p->db, "PRAGMA query_only=OFF", NULL, NULL, NULL);
+        p->read_only_scan = 0;
+        if (rc == SQLITE_OK)
+            rc = query_only;
+    }
     return rc == SQLITE_OK ? UD_OK : failure(p, rc);
 }
 static ud_status bind_connector_value(sqlite_state *, sqlite3_stmt *, int, const ud_value *,
@@ -416,12 +423,18 @@ static ud_status connector_read_open(void *state, const ud_read_options *options
     if (p->read || p->cursor_schema || options->sql.length > INT_MAX)
         return UD_INVALID;
     atomic_store(&p->cancelled, 0);
+    int query_only = sqlite3_exec(p->db, "PRAGMA query_only=ON", NULL, NULL, NULL);
+    if (query_only != SQLITE_OK)
+        return failure(p, query_only);
+    p->read_only_scan = 1;
     p->cursor_pending = 0;
     const char *tail = NULL;
     int rc =
         sqlite3_prepare_v2(p->db, options->sql.data, (int)options->sql.length, &p->read, &tail);
-    if (rc != SQLITE_OK)
+    if (rc != SQLITE_OK) {
+        connector_read_close(p);
         return failure(p, rc);
+    }
     while (tail < options->sql.data + options->sql.length &&
            (*tail == ' ' || *tail == '\n' || *tail == '\r' || *tail == '\t'))
         tail++;

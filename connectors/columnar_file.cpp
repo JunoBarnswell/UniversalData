@@ -1,10 +1,13 @@
 #include "ud/columnar_file.h"
+#include "parquet_scan.h"
 #include <arrow/api.h>
 #include <arrow/c/bridge.h>
 #include <arrow/io/api.h>
 #include <arrow/ipc/api.h>
 #include <parquet/arrow/reader.h>
 #include <parquet/arrow/writer.h>
+#include <parquet/file_reader.h>
+#include <parquet/statistics.h>
 #include <atomic>
 #include <cstring>
 #include <new>
@@ -39,14 +42,72 @@ struct ud_columnar_reader {
     std::shared_ptr<arrow::ipc::RecordBatchFileReader> file;
     std::shared_ptr<arrow::RecordBatch> pending;
     ud_batch*expected=nullptr;int64_t offset=0;int index=0;
+    bool empty_selection = false;
     ud_columnar_reader(ud_context*c,const ud_columnar_file_options&o):ctx(c),options(o),pool(c){}
     ~ud_columnar_reader(){ud_batch_destroy(expected);}
 };
-extern "C" ud_status ud_columnar_reader_open(ud_context*c,const char*path,const ud_batch*expected,const ud_columnar_file_options*o,ud_columnar_reader**out){
+static ud_status select_parquet_columns(ud_columnar_reader *reader, const ud_batch *requested,
+                                        int32_t month_from, int32_t month_before) {
+    const auto metadata = reader->parquet->parquet_reader()->metadata();
+    const auto *schema = metadata->schema();
+    std::vector<int> columns;
+    for (uint32_t i = 0; i < ud_batch_columns(requested); ++i) {
+        ud_field field{};
+        ud_status status = ud_batch_field(requested, i, &field);
+        if (status) return status;
+        int column = schema->ColumnIndex(std::string(field.name, field.name_length));
+        if (column < 0 || schema->Column(column)->max_repetition_level() != 0)
+            return UD_INCOMPATIBLE;
+        columns.push_back(column);
+    }
+    const int month = schema->ColumnIndex("calendarMonth");
+    const bool check_dates = (month_from != INT32_MIN || month_before != INT32_MAX) &&
+        month >= 0 && schema->Column(month)->logical_type()->is_date();
+    std::vector<int> groups;
+    for (int g = 0; g < metadata->num_row_groups(); ++g) {
+        if (check_dates) {
+            const auto column = metadata->RowGroup(g)->ColumnChunk(month);
+            const auto stats = std::dynamic_pointer_cast<parquet::Int32Statistics>(column->statistics());
+            if (stats && stats->HasMinMax() &&
+                (stats->max() < month_from || stats->min() >= month_before)) continue;
+        }
+        groups.push_back(g);
+    }
+    reader->empty_selection = groups.empty();
+    if (reader->empty_selection) return UD_OK;
+    auto selected = reader->parquet->GetRecordBatchReader(groups, columns);
+    if (!selected.ok()) return native_status(selected.status());
+    reader->stream = std::move(*selected);
+    return UD_OK;
+}
+
+static ud_status open_reader(ud_context*c,const char*path,const ud_batch*expected,
+                             const ud_columnar_file_options*o, bool project,
+                             int32_t month_from, int32_t month_before, ud_columnar_reader**out){
     if(!c||!path||!expected||!o||!out||o->struct_size!=sizeof(*o)||o->abi_version!=UD_ABI_VERSION||!o->batch_rows||o->batch_rows>65536||o->format<1||o->format>3)return UD_INVALID;*out=nullptr;ud_status result=check(c,*o);if(result)return result;
     void*storage=ud_alloc(c,sizeof(ud_columnar_reader));if(!storage)return UD_RESOURCE;auto*r=new(storage)ud_columnar_reader(c,*o);
     try{auto input=arrow::io::ReadableFile::Open(path,&r->pool);if(!input.ok())result=native_status(input.status());else r->input=*input;
-        if(!result&&o->format==UD_FILE_PARQUET){parquet::ReaderProperties props(&r->pool);parquet::ArrowReaderProperties typed;typed.set_use_threads(false);typed.set_batch_size(o->batch_rows);parquet::arrow::FileReaderBuilder builder;auto status=builder.Open(r->input,props);if(status.ok()){builder.memory_pool(&r->pool);builder.properties(typed);status=builder.Build(&r->parquet);}if(status.ok())status=r->parquet->GetRecordBatchReader(&r->stream);result=native_status(status);}
+        if (!result && o->format == UD_FILE_PARQUET) {
+            parquet::ReaderProperties props(&r->pool);
+            parquet::ArrowReaderProperties typed;
+            typed.set_use_threads(false);
+            typed.set_batch_size(o->batch_rows);
+            parquet::arrow::FileReaderBuilder builder;
+            auto status = builder.Open(r->input, props);
+            if (status.ok()) {
+                builder.memory_pool(&r->pool);
+                builder.properties(typed);
+                status = builder.Build(&r->parquet);
+            }
+            result = native_status(status);
+            if (!result && project)
+                result = select_parquet_columns(r, expected, month_from, month_before);
+            else if (!result) {
+                auto stream = r->parquet->GetRecordBatchReader();
+                result = native_status(stream.status());
+                if (!result) r->stream = std::move(*stream);
+            }
+        }
         else if(!result){auto options=arrow::ipc::IpcReadOptions::Defaults();options.memory_pool=&r->pool;options.use_threads=false;options.max_recursion_depth=32;
             if(o->format==UD_FILE_ARROW_IPC){auto file=arrow::ipc::RecordBatchFileReader::Open(r->input,options);if(file.ok())r->file=*file;else result=native_status(file.status());}
             else{auto stream=arrow::ipc::RecordBatchStreamReader::Open(r->input,options);if(stream.ok())r->stream=*stream;else result=native_status(stream.status());}}
@@ -54,14 +115,23 @@ extern "C" ud_status ud_columnar_reader_open(ud_context*c,const char*path,const 
     }catch(const std::bad_alloc&){result=UD_RESOURCE;}catch(...){result=UD_CORRUPT;}
     if(result){r->~ud_columnar_reader();ud_free(r);return result;}*out=r;return UD_OK;
 }
+extern "C" ud_status ud_columnar_reader_open(ud_context*c,const char*path,const ud_batch*expected,const ud_columnar_file_options*o,ud_columnar_reader**out){
+    return open_reader(c, path, expected, o, false, INT32_MIN, INT32_MAX, out);
+}
+extern "C" ud_status ud_parquet_scan_open(ud_context*c,const char*path,const ud_batch*expected,
+        const ud_columnar_file_options*o,int32_t month_from,int32_t month_before,ud_columnar_reader**out){
+    if (!o || o->format != UD_FILE_PARQUET || month_from >= month_before) return UD_INVALID;
+    return open_reader(c, path, expected, o, true, month_from, month_before, out);
+}
 extern "C" ud_status ud_columnar_reader_next(ud_columnar_reader*r,ud_batch**out){if(!r||!out)return UD_INVALID;*out=nullptr;ud_status result=check(r->ctx,r->options);if(result)return result;
+    if (r->empty_selection) return UD_END;
     try{while(!r->pending||r->offset==r->pending->num_rows()){r->pending.reset();r->offset=0;
             if(r->file){if(r->index==r->file->num_record_batches())return UD_END;auto batch=r->file->ReadRecordBatch(r->index++);if(!batch.ok())return native_status(batch.status());r->pending=*batch;}
             else{auto status=r->stream->ReadNext(&r->pending);if(!status.ok())return native_status(status);if(!r->pending)return UD_END;}if(!r->pending->num_rows())continue;}
         auto count=std::min<int64_t>(r->options.batch_rows,r->pending->num_rows()-r->offset);auto part=r->pending->Slice(r->offset,count);ud_batch*decoded=nullptr;result=import_native(r->ctx,part,&decoded);
         uint32_t columns=ud_batch_columns(r->expected);std::vector<uint32_t> mapping(columns);std::vector<ud_field> fields(columns);
         if(!result&&ud_batch_columns(decoded)!=columns)result=UD_INCOMPATIBLE;
-        for(uint32_t i=0;!result&&i<columns;i++){mapping[i]=i;ud_field actual;result=ud_batch_field(r->expected,i,&fields[i]);if(!result)result=ud_batch_field(decoded,i,&actual);if(!result&&(actual.name_length!=fields[i].name_length||std::memcmp(actual.name,fields[i].name,actual.name_length)))result=UD_INCOMPATIBLE;}
+        for(uint32_t i=0;!result&&i<columns;i++){mapping[i]=i;ud_field actual{};result=ud_batch_field(r->expected,i,&fields[i]);if(!result)result=ud_batch_field(decoded,i,&actual);if(!result&&(actual.name_length!=fields[i].name_length||std::memcmp(actual.name,fields[i].name,actual.name_length)))result=UD_INCOMPATIBLE;}
         if(!result)result=ud_batch_seal(decoded);if(!result)result=ud_batch_project(r->ctx,decoded,mapping.data(),fields.data(),columns,out);ud_batch_destroy(decoded);if(!result)r->offset+=count;
     }catch(const std::bad_alloc&){result=UD_RESOURCE;}catch(...){result=UD_CORRUPT;}return result;
 }
@@ -77,7 +147,17 @@ static ud_status reserve(ud_columnar_writer*w,uint64_t bytes){if(!w->options.buf
 extern "C" ud_status ud_columnar_writer_open(ud_context*c,const char*path,const ud_batch*schema,const ud_columnar_file_options*o,ud_columnar_writer**out){if(!c||!path||!schema||!o||!out||o->struct_size!=sizeof(*o)||o->abi_version!=UD_ABI_VERSION||o->format<1||o->format>3)return UD_INVALID;*out=nullptr;ud_status result=check(c,*o);if(result)return result;void*storage=ud_alloc(c,sizeof(ud_columnar_writer));if(!storage)return UD_RESOURCE;auto*w=new(storage)ud_columnar_writer(c,*o);
     try{auto batch=export_native(schema);if(!batch.ok())result=native_status(batch.status());else w->schema=(*batch)->schema();size_t wire=0;if(!result){uint8_t*bytes=nullptr;uint64_t n=0;result=ud_batch_serialize(schema,&bytes,&n);wire=static_cast<size_t>(n);ud_free(bytes);}if(!result)result=reserve(w,wire*4+65536);
         if(!result){auto output=arrow::io::FileOutputStream::Open(path);if(output.ok())w->output=*output;else result=native_status(output.status());}
-        if(!result&&o->format==UD_FILE_PARQUET){auto props=parquet::WriterProperties::Builder().memory_pool(&w->pool)->compression(parquet::Compression::UNCOMPRESSED)->build();auto arrow_props=parquet::ArrowWriterProperties::Builder().store_schema()->disable_compliant_nested_types()->set_use_threads(false)->build();auto writer=parquet::arrow::FileWriter::Open(*w->schema,&w->pool,w->output,props,arrow_props);if(writer.ok())w->parquet=std::move(*writer);else result=native_status(writer.status());}
+        if (!result && o->format == UD_FILE_PARQUET) {
+            // Bound buffered rows per sink when one publication writes multiple shards.
+            auto props = parquet::WriterProperties::Builder()
+                .memory_pool(&w->pool)->max_row_group_length(32768)
+                ->compression(parquet::Compression::UNCOMPRESSED)->build();
+            auto arrow_props = parquet::ArrowWriterProperties::Builder()
+                .store_schema()->disable_compliant_nested_types()->set_use_threads(false)->build();
+            auto writer = parquet::arrow::FileWriter::Open(*w->schema, &w->pool, w->output, props, arrow_props);
+            if (writer.ok()) w->parquet = std::move(*writer);
+            else result = native_status(writer.status());
+        }
         else if(!result){auto options=arrow::ipc::IpcWriteOptions::Defaults();options.memory_pool=&w->pool;options.use_threads=false;auto writer=o->format==UD_FILE_ARROW_IPC?arrow::ipc::MakeFileWriter(w->output,w->schema,options):arrow::ipc::MakeStreamWriter(w->output,w->schema,options);if(writer.ok())w->ipc=*writer;else result=native_status(writer.status());}
     }catch(const std::bad_alloc&){result=UD_RESOURCE;}catch(...){result=UD_CORRUPT;}if(result){w->~ud_columnar_writer();ud_free(w);return result;}*out=w;return UD_OK;
 }

@@ -34,12 +34,16 @@ export default function App() {
 }
 function AuthenticatedApp({ session }: { session: Session }) {
   const canAnalyze = session.grants.some(({ permission }) => permission === "*" || permission === "analysis.read");
+  const canManageAnalysis = session.grants.some(({ permission }) => permission === "*" || permission === "analysis.write");
   const canReadComponents = session.grants.some(({ permission, resource }) =>
     (permission === "*" || permission === "component.read") && resource === "*");
   const analysisOnly = canAnalyze && !session.grants.some(({ permission }) =>
     permission === "*" || /^(component|package|deployment|execution|job|logs|worker)\./.test(permission));
+  // A shared dashboard is authorized by its membership on the API. Keep a direct
+  // analysis URL renderable even when the viewer has no author-side analysis grant.
+  const analysisRoute = window.location.pathname === "/analysis" || window.location.pathname.startsWith("/analysis/");
   const [page, setPage] = useState<Page>(() =>
-    analysisOnly || canAnalyze && window.location.pathname.split("/")[1] === "analysis" ? "analysis" : "projects");
+    analysisRoute || analysisOnly ? "analysis" : "projects");
   const [components, setComponents] = useState<Component[]>([]);
   const [error, setError] = useState("");
   const workspace = useWorkspaces();
@@ -97,7 +101,7 @@ function AuthenticatedApp({ session }: { session: Session }) {
           </button>
         </div>
       ) : null}
-      {page === "analysis" && <Analysis />}
+      {page === "analysis" && <Analysis canManage={canManageAnalysis} />}
       {page === "projects" ? (
         <Projects
           open={(version) => {

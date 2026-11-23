@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronRight, Download, Info, RefreshCw, Save, X } from "lucide-react";
 import { api, encode, request } from "../../api";
+import { Button, Input, Select } from "../../shared/design-system/Controls";
 import { ValuesTable } from "./AnalysisTable";
 import { datasetPath, type Cell, type Chart, type Dataset, type Details, type Dimension, type Filter, type Group,
   type Query, type Release, type ReportResult, type SavedReport,
@@ -174,48 +175,48 @@ export function AnalysisReport({ dataset, release, onSaved, onEdit, onLatest, on
     <header className="analysis-heading">
       <div><h1>{visible.name}</h1><p>{release.sourceName} · 版本 {release.id} · 数据截至 {asOf}</p></div>
       <div className="analysis-heading-actions">
-        <button type="button" onClick={onEdit}><ArrowLeft size={15} />编辑建模规则</button>
-        <button type="button" onClick={onReplace}><RefreshCw size={15} />更新数据</button>
-        <button type="button" disabled={!data || loading} onClick={() => void download(data?.groups.length === 0)}><Download size={15} />导出当前视图</button>
+        <Button onClick={onEdit}><ArrowLeft size={15} />编辑建模规则</Button>
+        <Button onClick={onReplace}><RefreshCw size={15} />更新数据</Button>
+        <Button disabled={!data || loading} onClick={() => void download(data?.groups.length === 0)}><Download size={15} />导出当前视图</Button>
       </div>
     </header>
     {dataset.publishedReleaseId && release.id !== dataset.publishedReleaseId && <div className="analysis-progress">
-      正在查看已保存的版本 {release.id}。<button type="button" onClick={onLatest}>打开版本 {dataset.publishedReleaseId}</button>
+      正在查看已保存的版本 {release.id}。<Button onClick={onLatest}>打开版本 {dataset.publishedReleaseId}</Button>
     </div>}
     {error && <div className="analysis-alert" role="alert">{data ? "正在查看上次成功的数据。 " : ""}{error}</div>}
     {notice && <p role="status">{notice}</p>}
     <form className="analysis-filters" onSubmit={(event) => { event.preventDefault(); apply(); }}>
-      <label>看什么<select value={settings.chartMeasure ?? "records"} onChange={(event) => setSettings({ ...settings, chartMeasure: event.target.value })}>
+      <label>看什么<Select value={settings.chartMeasure ?? "records"} onChange={(event) => setSettings({ ...settings, chartMeasure: event.target.value })}>
         {release.measures.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-      </select></label>
+      </Select></label>
       {[0, 1].map((index) => (index === 0 || settings.query.dimensions.length > 0) && <label key={index}>{index === 0 ? "按什么看" : "透视列"}
-        <select value={settings.query.dimensions[index] ? `${settings.query.dimensions[index].fieldId}/${settings.query.dimensions[index].level}` : ""}
+        <Select value={settings.query.dimensions[index] ? `${settings.query.dimensions[index].fieldId}/${settings.query.dimensions[index].level}` : ""}
           onChange={(event) => setDimension(index, event.target.value)}>
           <option value="">{index === 0 ? "查看明细" : "无"}</option>
           {dimensions.filter((item) => !settings.query.dimensions.some((group, at) => at !== index && group.fieldId === item.fieldId))
             .map((item) => <option key={`${item.fieldId}/${item.level}`} value={`${item.fieldId}/${item.level}`}>{dimensionLabel(item)}</option>)}
-        </select></label>)}
-      <label>视图<select value={settings.chart} onChange={(event) => setSettings({ ...settings, chart: event.target.value as Chart })}>
+        </Select></label>)}
+      <label>视图<Select value={settings.chart} onChange={(event) => setSettings({ ...settings, chart: event.target.value as Chart })}>
         <option value="table">表格</option>
         {settings.query.dimensions.length > 0 && <option value="bar">横条</option>}
         {settings.query.dimensions[0]?.level !== "value" && settings.query.dimensions.length > 0 && <option value="line">折线</option>}
-      </select></label>
+      </Select></label>
       {date && <>
-        <label>开始日期<input type="date" value={filters.find((filter) => filter.operator === "from")?.value ?? ""}
+        <label>开始日期<Input type="date" value={filters.find((filter) => filter.operator === "from")?.value ?? ""}
           onChange={(event) => dateBound("from", event.target.value)} /></label>
-        <label>结束日期（不含）<input type="date" value={filters.find((filter) => filter.operator === "before")?.value ?? ""}
+        <label>结束日期（不含）<Input type="date" value={filters.find((filter) => filter.operator === "before")?.value ?? ""}
           onChange={(event) => dateBound("before", event.target.value)} /></label>
       </>}
-      {categories.length > 0 && <label>分类筛选<select value={category?.fieldId ?? ""} onChange={(event) => categoryFilter(event.target.value)}>
+      {categories.length > 0 && <label>分类筛选<Select value={category?.fieldId ?? ""} onChange={(event) => categoryFilter(event.target.value)}>
         <option value="">所有分类</option>{categories.map((item) => <option value={item.fieldId} key={item.fieldId}>{item.label}</option>)}
-      </select></label>}
+      </Select></label>}
       {category && <>
-        <label>分类值<input value={category.value ?? ""} placeholder="输入完整类别名称" disabled={category.operator === "isNull"}
+        <label>分类值<Input value={category.value ?? ""} placeholder="输入完整类别名称" disabled={category.operator === "isNull"}
           onChange={(event) => categoryFilter(category.fieldId, event.target.value)} /></label>
-        <label className="analysis-checkbox"><input type="checkbox" checked={category.operator === "isNull"}
+        <label className="analysis-checkbox"><Input type="checkbox" checked={category.operator === "isNull"}
           onChange={(event) => categoryFilter(category.fieldId, category.value, event.target.checked)} />仅未填写</label>
       </>}
-      <button type="submit" className="analysis-primary">应用筛选</button>
+      <Button type="submit" className="analysis-primary">应用筛选</Button>
     </form>
     {loading && <p className="analysis-progress" role="status">正在计算版本 {release.id} 的数据…</p>}
     {data && <>
@@ -240,12 +241,12 @@ export function AnalysisReport({ dataset, release, onSaved, onEdit, onLatest, on
         <ChartView kind={visible.chart} cells={primary.cells} measure={measure.id} onCell={(cell) => void drill(cell.keys)} />
       </section>}
       {!data.empty && display && measure && <section className="analysis-panel">
-        <div className="analysis-section-heading"><h2>数据透视表</h2><button type="button" onClick={() => void drill(null)}>查看全部明细<ChevronRight size={15} /></button></div>
+        <div className="analysis-section-heading"><h2>数据透视表</h2><Button onClick={() => void drill(null)}>查看全部明细<ChevronRight size={15} /></Button></div>
         {display.dimensions.length === 2 ? <Pivot result={data} group={display} measure={measure.id} labelFor={dimensionLabel}
           onCell={(cell) => void drill(cell.keys)} /> : <div className="analysis-scroll"><table className="analysis-table">
           <thead><tr><th scope="col">{dimensionLabel(display.dimensions[0])}</th>{data.measures.map((item) => <th key={item.id} scope="col">{item.label}</th>)}</tr></thead>
           <tbody>{display.cells.map((cell) => <tr key={setKey(cell.keys)}><th scope="row">{label(cell.keys[0])}</th>
-            {data.measures.map((item) => <td key={item.id}><button type="button" onClick={() => void drill(cell.keys)}>{number(cell.values[item.id])}</button></td>)}
+            {data.measures.map((item) => <td key={item.id}><Button className="text-button" onClick={() => void drill(cell.keys)}>{number(cell.values[item.id])}</Button></td>)}
           </tr>)}</tbody>
           <tfoot><tr><th scope="row">总计</th>{data.measures.map((item) => <td key={item.id}>{number(data.total[item.id])}</td>)}</tr></tfoot>
         </table></div>}
@@ -253,22 +254,22 @@ export function AnalysisReport({ dataset, release, onSaved, onEdit, onLatest, on
       {detailOpen && <section className="analysis-panel" aria-label="明细">
         <div className="analysis-section-heading">
           <h2>{standaloneDetails ? "明细表" : "明细"} <small>{selected?.map(label).join(" / ") || "当前筛选范围"}</small></h2>
-          <button type="button" disabled={!details} onClick={() => void download(true)}><Download size={15} />导出明细</button>
-          {!standaloneDetails && <button type="button" aria-label="关闭明细" onClick={() => {
+          <Button disabled={!details} onClick={() => void download(true)}><Download size={15} />导出明细</Button>
+          {!standaloneDetails && <Button aria-label="关闭明细" onClick={() => {
             detailRequest.current?.abort(); setDetails(undefined); setDetailLoading(false); setDetailError("");
-          }}><X size={16} /></button>}
+          }}><X size={16} /></Button>}
         </div>
         {detailLoading && <p role="status">正在读取明细…</p>}
         {detailError && <p role="alert">{detailError}</p>}
         {details && <ValuesTable fields={details.fields} rows={details.rows} />}
-        {details?.nextCursor && <button type="button" disabled={detailLoading} onClick={() => void drill(selected, details.nextCursor)}>下一页<ChevronRight size={15} /></button>}
+        {details?.nextCursor && <Button disabled={detailLoading} onClick={() => void drill(selected, details.nextCursor)}>下一页<ChevronRight size={15} /></Button>}
       </section>}
     </>}
     <footer className="analysis-actions">
-      <label>报表名称<input value={settings.name} maxLength={128} onChange={(event) => setSettings({ ...settings, name: event.target.value })} /></label>
+      <label>报表名称<Input value={settings.name} maxLength={128} onChange={(event) => setSettings({ ...settings, name: event.target.value })} /></label>
       {editing && <span>应用当前设置后可保存。</span>}
-      <button type="button" className="analysis-primary" disabled={!data || loading || saving || editing || !!error}
-        onClick={() => void saveReport()}><Save size={15} />保存报表</button>
+      <Button className="analysis-primary" disabled={!data || loading || saving || editing || !!error}
+        onClick={() => void saveReport()}><Save size={15} />保存报表</Button>
     </footer>
   </article>;
 }
@@ -285,8 +286,8 @@ function Pivot({ result, group, measure, labelFor, onCell }: {
     <tbody>{rows.cells.map((row) => <tr key={setKey(row.keys)}><th scope="row">{label(row.keys[0])}</th>
       {columns.cells.map((column) => {
         const cell = lookup.get(setKey([row.keys[0], column.keys[0]]));
-        return <td key={setKey(column.keys)}>{cell ? <button type="button" onClick={() => onCell(cell)}>{number(cell.values[measure])}</button> : "—"}</td>;
-      })}<td><button type="button" onClick={() => onCell(row)}>{number(row.values[measure])}</button></td>
+        return <td key={setKey(column.keys)}>{cell ? <Button className="text-button" onClick={() => onCell(cell)}>{number(cell.values[measure])}</Button> : "—"}</td>;
+      })}<td><Button className="text-button" onClick={() => onCell(row)}>{number(row.values[measure])}</Button></td>
     </tr>)}</tbody>
     <tfoot><tr><th scope="row">总计</th>{columns.cells.map((cell) => <td key={setKey(cell.keys)}>{number(cell.values[measure])}</td>)}
       <td>{number(result.total[measure])}</td></tr></tfoot>
@@ -306,11 +307,11 @@ function ChartView({ kind, cells, measure, onCell }: {
       const value = values[index];
       const zero = -min / range * 100;
       const position = value === null ? zero : (value - min) / range * 100;
-      return <button key={setKey(cell.keys)} type="button" onClick={() => onCell(cell)}>
+      return <Button key={setKey(cell.keys)} onClick={() => onCell(cell)}>
         <span>{label(cell.keys[0])}</span>
         <span className="analysis-bar-track" aria-hidden="true"><i style={{ left: `${Math.min(zero, position)}%`, width: `${Math.abs(position - zero)}%` }} /></span>
         <strong>{number(cell.values[measure])}</strong>
-      </button>;
+      </Button>;
     })}
   </div>;
   const width = 720, height = 190, inset = 32;

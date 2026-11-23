@@ -1,6 +1,7 @@
 #ifndef UD_COMPUTE_INTERNAL_H
 #define UD_COMPUTE_INTERNAL_H
 #include "ud/compute.h"
+#include "ud/buffer.h"
 #include "ud/expression.h"
 #include "../data/internal.h"
 typedef struct {
@@ -9,7 +10,7 @@ typedef struct {
     char *name;
     ud_expression *condition;
     uint32_t maximum_distinct;
-    int distinct, rounding;
+    int distinct, rounding, spill;
 } ud_aggregate_def;
 struct ud_plan {
     ud_context *ctx;
@@ -29,6 +30,9 @@ int ud_value_compare(const ud_value *, const ud_value *);
 ud_status ud_plan_check_batch(const ud_plan *, const ud_batch *);
 ud_status ud_plan_accept(const ud_plan *, const ud_batch *, uint32_t, int *);
 ud_status ud_accumulator_update_accepted(ud_accumulator *, const ud_batch *, uint32_t, int);
+ud_status ud_accumulator_create_with_buffers(const ud_plan *, ud_buffer_manager *, ud_accumulator **);
+uint32_t ud_accumulator_group_count(const ud_accumulator *);
+uint64_t ud_accumulator_group_bytes(const ud_accumulator *);
 ud_status ud_accumulator_state_schema(const ud_plan *,ud_batch **);
 ud_status ud_accumulator_partial_snapshot(const ud_accumulator *,ud_batch **);
 ud_status ud_accumulator_merge_row(ud_accumulator *,const ud_batch *,uint32_t);

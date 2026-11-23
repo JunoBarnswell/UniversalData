@@ -15,6 +15,7 @@ typedef struct ud_set_entry {
 typedef struct ud_value_set {
     ud_context *ctx;
     uint32_t count, capacity, maximum, bucket_count;
+    uint64_t bytes;
     uint32_t *buckets;
     ud_set_entry *entries;
 } ud_value_set;

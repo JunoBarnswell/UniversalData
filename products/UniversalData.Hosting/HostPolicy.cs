@@ -5,7 +5,7 @@ namespace UniversalData.Hosting;
 
 public sealed record TenantResources(string[] FileRoots, string[] NetworkOrigins, string[] PluginRoots,
     string[] CredentialReferences, Dictionary<string, ConnectionAccess[]>? Resources = null, string[]? ReadOnlyRoots = null, string[]? TestResources = null,
-    AnalysisIcebergSource[]? AnalysisSources = null);
+    AnalysisIcebergSource[]? AnalysisSources = null, AnalysisSqlSource[]? AnalysisSqlSources = null);
 
 /// <summary>One host resource ceiling, narrowed by the authenticated tenant and subject before Native binding.</summary>
 public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string[] NetworkOrigins,
@@ -262,7 +262,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
             if (kind is null)
                 throw new UniversalDataException((int)StatusCode.DriverUnavailable,
                     $"Native connector '{driver}' is not installed");
-            string? path = SdkNativeSources.FindPluginPath(kind.Value);
+            string? path = SdkNativeSources.FindPluginPath(kind.Value, pluginDirectories: PluginRoots);
             if (path is null)
                 throw new UniversalDataException((int)StatusCode.DriverUnavailable,
                     $"Native {kind.Value} connector is not installed");

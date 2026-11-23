@@ -596,6 +596,75 @@ ud_status ud_catalog_list(ud_catalog *c, int32_t kind, char **json, uint32_t *le
     catalog_finalize(s);
     return status;
 }
+/* Apply tenant, current membership and the cursor before materializing a page. */
+static ud_status dashboard_page(ud_catalog *c, const ud_json *query, char **json, uint32_t *length) {
+    const char *keys[] = {"dashboardReader", "afterId", "limit"};
+    ud_string reader, after;
+    uint64_t limit;
+    UD_TRY(ud_json_keys(query, keys, 3));
+    UD_TRY(ud_json_string(ud_member(query, keys[0]), &reader));
+    UD_TRY(ud_json_string(ud_member(query, keys[1]), &after));
+    UD_TRY(ud_json_uint(ud_member(query, keys[2]), &limit));
+    if (!string_valid(reader, 1) || reader.length != 65 || !string_valid(after, 1) ||
+        after.length > 255 || !limit || limit > 100)
+        return UD_SCHEMA;
+    catalog_statement *s = NULL;
+    ud_status status = catalog_prepare(c,
+        "SELECT id,revision,document,digest,timestamp_ms FROM documents d WHERE tenant=?1 AND kind=7 "
+        "AND id>?2 AND id>='bi-board/' AND id<'bi-board0' AND NOT EXISTS(SELECT 1 FROM documents n "
+        "WHERE n.tenant=d.tenant AND n.kind=d.kind AND n.id=d.id AND n.revision>d.revision) "
+        "AND ((document ->> 'ownerKey')=?3 OR ((document -> 'members') ->> CAST(?3 AS TEXT)) IS NOT NULL) "
+        "ORDER BY id LIMIT ?4", &s);
+    if (!status) status = catalog_text(s, 1, c->options.tenant);
+    if (!status) status = catalog_text(s, 2, after);
+    if (!status) status = catalog_text(s, 3, reader);
+    if (!status) status = catalog_int(s, 4, (int)limit);
+    if (!status) status = collect(c, UD_CATALOG_AUDIT, s, 1, json, length);
+    catalog_finalize(s);
+    return status;
+}
+
+static ud_status refresh_page(ud_catalog *c, const ud_json *query, char **json, uint32_t *length) {
+    const ud_json *due = ud_member(query, "refreshDueMs");
+    const char *schedule_keys[] = {"refreshDueMs", "limit"};
+    const char *history_keys[] = {"refreshHistory", "afterId", "limit"};
+    UD_TRY(ud_json_keys(query, due ? schedule_keys : history_keys, due ? 2 : 3));
+    uint64_t limit = 0, now = 0;
+    ud_string prefix = {0}, after = {0};
+    UD_TRY(ud_json_uint(ud_member(query, "limit"), &limit));
+    if (!limit || limit > 100) return UD_SCHEMA;
+    if (due) {
+        UD_TRY(ud_json_uint(due, &now));
+        if (now > INT64_MAX) return UD_SCHEMA;
+    } else {
+        UD_TRY(ud_json_string(ud_member(query, "refreshHistory"), &prefix));
+        UD_TRY(ud_json_string(ud_member(query, "afterId"), &after));
+        if (prefix.length != 44 || memcmp(prefix.data, "bi-refresh/", 11) ||
+            prefix.data[43] != '/' || after.length > 80) return UD_SCHEMA;
+    }
+    const char *scheduled =
+        "SELECT id,revision,document,digest,timestamp_ms FROM documents d WHERE tenant=?1 AND kind=7 "
+        "AND id>='bi-schedule/' AND id<'bi-schedule0' AND NOT EXISTS(SELECT 1 FROM documents n "
+        "WHERE n.tenant=d.tenant AND n.kind=d.kind AND n.id=d.id AND n.revision>d.revision) "
+        "AND ((document ->> 'active') IS NOT NULL OR CAST(document ->> 'nextDueMs' AS BIGINT)<=?3) "
+        "ORDER BY timestamp_ms,id LIMIT ?2";
+    const char *history =
+        "SELECT id,revision,document,digest,timestamp_ms FROM documents WHERE tenant=?1 AND kind=7 "
+        "AND id>=?3 AND id<(?3 || '~') AND (?4=?3 OR (timestamp_ms,id)<(SELECT timestamp_ms,id "
+        "FROM documents WHERE tenant=?1 AND kind=7 AND id=?4 AND revision='00000000000000000001')) "
+        "ORDER BY timestamp_ms DESC,id DESC LIMIT ?2";
+    catalog_statement *s = NULL;
+    ud_status status = catalog_prepare(c, due ? scheduled : history, &s);
+    if (!status) status = catalog_text(s, 1, c->options.tenant);
+    if (!status) status = catalog_int(s, 2, (int)limit);
+    if (!status && due) status = catalog_int(s, 3, (int64_t)now);
+    if (!status && !due) status = catalog_text(s, 3, prefix);
+    if (!status && !due) status = catalog_text(s, 4, after);
+    if (!status) status = collect(c, UD_CATALOG_AUDIT, s, 1, json, length);
+    catalog_finalize(s);
+    return status;
+}
+
 ud_status ud_catalog_query(ud_catalog *c, ud_string input, char **json, uint32_t *length) {
     if (!c || !json || !length)
         return UD_INVALID;
@@ -604,6 +673,16 @@ ud_status ud_catalog_query(ud_catalog *c, ud_string input, char **json, uint32_t
     UD_TRY(grant(c, UD_ACCESS_READ));
     ud_json *query = NULL;
     ud_status status = ud_json_parse(c->ctx, input.data, input.length, &query, NULL);
+    if (!status && ud_member(query, "dashboardReader")) {
+        status = dashboard_page(c, query, json, length);
+        ud_json_destroy(query);
+        return status;
+    }
+    if (!status && (ud_member(query, "refreshHistory") || ud_member(query, "refreshDueMs"))) {
+        status = refresh_page(c, query, json, length);
+        ud_json_destroy(query);
+        return status;
+    }
     const char *keys[] = {"kind",  "id",     "afterId",    "afterRevision", "sinceMs", "untilMs",
                           "limit", "taskId", "pipelineId", "componentId",   "result",  "eventKind", "latestOnly"};
     if (!status)

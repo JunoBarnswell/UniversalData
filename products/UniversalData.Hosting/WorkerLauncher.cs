@@ -110,7 +110,8 @@ public static class WorkerLauncher
 
     internal static async Task<JsonElement> Inspect(WorkerSupervisor supervisor, WorkerRequest request, CancellationToken cancellation)
     {
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation); deadline.CancelAfter(TimeSpan.FromSeconds(60));
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        deadline.CancelAfter(TimeSpan.FromSeconds(request.Mode == "analysis" ? request.Policy.ExecutionTimeoutSeconds : 60));
         await using var worker = await supervisor.RentAsync(request, supervisor.OrdinaryBudget, deadline.Token);
         var process = worker.Process;
             string response = await WorkerProtocol.ReadLine(process.StandardOutput,67108864,deadline.Token) ?? throw new IOException("Worker returned no result");

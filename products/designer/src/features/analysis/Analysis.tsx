@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Database, FileSpreadsheet, FolderOpen, Plus, Upload, X } from "lucide-react";
 import { api, encode } from "../../api";
+import { Button, Input, Select } from "../../shared/design-system/Controls";
+import { DashboardExperience } from "./Dashboard";
 import { AnalysisReport } from "./AnalysisReport";
 import { ValuesTable } from "./AnalysisTable";
+import { MetricEditor } from "./MetricEditor";
 import { datasetPath, roles, type Dataset, type Model, type Preview, type Publication, type PublishRequest, type Release, type Rule, type Source } from "./model";
 import "./analysis.css";
 
@@ -10,7 +13,21 @@ function replaceAddress(dataset?: string, draft = false) {
   window.history.replaceState(null, "", dataset ? `/analysis/${dataset}${draft ? "?draft=1" : ""}` : "/analysis");
 }
 
-export function Analysis() {
+export function Analysis({ canManage = true }: { canManage?: boolean }) {
+  const [legacyRoute, setLegacyRoute] = useState<string | null>(() => {
+    const parts = window.location.pathname.split("/").filter(Boolean);
+    return parts[0] === "analysis" && parts[1] !== "dashboard" ? parts[1] ?? null : null;
+  });
+  function openLegacy(datasetId?: string) {
+    const next = datasetId ?? "new";
+    window.history.replaceState(null, "", datasetId ? `/analysis/${encodeURIComponent(datasetId)}` : "/analysis/new");
+    setLegacyRoute(next);
+  }
+  if (legacyRoute !== null) return <LegacyAnalysis onBack={() => { window.history.replaceState(null, "", "/analysis"); setLegacyRoute(null); }} />;
+  return <DashboardExperience canManage={canManage} onOpenLegacy={openLegacy} />;
+}
+
+function LegacyAnalysis({ onBack }: { onBack(): void }) {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [dataset, setDataset] = useState<Dataset>();
@@ -24,7 +41,8 @@ export function Analysis() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const saved = window.location.pathname.split("/")[2];
+    const savedPart = window.location.pathname.split("/")[2];
+    const saved = savedPart && savedPart !== "new" ? savedPart : undefined;
     api<Dataset[]>("/analysis/datasets", { signal: controller.signal }).then(setDatasets).catch(fail);
     api<Source[]>("/analysis/sources", { signal: controller.signal }).then(setSources).catch(fail);
     if (saved) {
@@ -104,30 +122,30 @@ export function Analysis() {
   const uploadPath = replacement ? `?datasetId=${replacement.id}&expectedRevision=${replacement.revision}` : "";
   return <main className="analysis-page" ref={focus} tabIndex={-1}>
     <aside className="analysis-sidebar" aria-label="已保存的分析">
-      <div className="analysis-sidebar-title"><FolderOpen size={19} /><strong>我的分析</strong></div>
-      <button type="button" className="analysis-new" onClick={() => start()} disabled={!!busy}><Plus size={16} />新建分析</button>
+      <div className="analysis-sidebar-title"><Button className="text-button" aria-label="返回仪表盘" onClick={onBack}><ArrowRight size={15} /></Button><FolderOpen size={19} /><strong>旧版报表</strong></div>
+      <Button className="analysis-new" onClick={() => start()} disabled={!!busy}><Plus size={16} />新建分析</Button>
       <div className="analysis-library">
-        {datasets.map((item) => <button type="button" key={item.id} className={item.id === dataset?.id ? "selected" : ""}
+        {datasets.map((item) => <Button key={item.id} className={item.id === dataset?.id ? "selected" : ""}
           disabled={!!busy} onClick={() => void open(item)}>
           <strong>{item.name}</strong><small>{item.publishedReleaseId ? "已保存报表" : "草稿"} · {item.sourceName}</small>
-        </button>)}
+        </Button>)}
         {!datasets.length && <small>保存的报表和草稿会出现在这里。</small>}
       </div>
     </aside>
     <section className="analysis-main">
       <nav className="analysis-steps" aria-label="分析进度">
-        <button type="button" aria-current={stage === "source" ? "step" : undefined} onClick={() => start(dataset)} disabled={!!busy || stage === "source"}>选数据</button>
+        <Button aria-current={stage === "source" ? "step" : undefined} onClick={() => start(dataset)} disabled={!!busy || stage === "source"}>选数据</Button>
         <ArrowRight size={14} aria-hidden="true" />
-        <button type="button" aria-current={stage === "model" ? "step" : undefined} onClick={editModel} disabled={!dataset || !!busy || stage !== "report"}>确认建议</button>
+        <Button aria-current={stage === "model" ? "step" : undefined} onClick={editModel} disabled={!dataset || !!busy || stage !== "report"}>确认建议</Button>
         <ArrowRight size={14} aria-hidden="true" />
-        <button type="button" aria-current={stage === "report" ? "step" : undefined} onClick={() => dataset && void open(dataset)}
-          disabled={!dataset?.publishedReleaseId || !!busy || stage === "report"}>看结果</button>
+        <Button aria-current={stage === "report" ? "step" : undefined} onClick={() => dataset && void open(dataset)}
+          disabled={!dataset?.publishedReleaseId || !!busy || stage === "report"}>看结果</Button>
       </nav>
       {error && <div className="analysis-alert" role="alert">{error}</div>}
-      {busy && <div className="analysis-progress" role="status">{busy}<button type="button" onClick={() => {
+      {busy && <div className="analysis-progress" role="status">{busy}<Button onClick={() => {
         navigation.current?.abort();
         setBusy("");
-      }}><X size={14} />取消</button></div>}
+      }}><X size={14} />取消</Button></div>}
       {stage === "source" && <div className="analysis-source">
         <h1>{replacement ? "更新分析数据" : "用一张表生成报表"}</h1>
         <p>{replacement ? `为「${replacement.name}」选择新数据。已保存报表仍可打开。` : "选择已有数据或上传一张明细表。"}</p>
@@ -135,10 +153,10 @@ export function Analysis() {
           <section>
             <Database size={23} aria-hidden="true" />
             <h2>选已有数据</h2>
-            {sources.length ? sources.map((source) => <button type="button" key={source.id} disabled={!!busy}
+            {sources.length ? sources.map((source) => <Button key={source.id} disabled={!!busy}
                 onClick={() => void choose((signal) => api<Dataset>("/analysis/datasets", { method: "POST", signal, body: encode({ sourceId: source.id, ...sourceBody }) }))}>
                 {source.name}<ArrowRight size={16} />
-              </button>) : <p>当前没有可用的已发布数据。</p>}
+              </Button>) : <p>当前没有可用的已发布数据。</p>}
           </section>
           <section>
             <FileSpreadsheet size={23} aria-hidden="true" />
@@ -146,7 +164,7 @@ export function Analysis() {
             <p>CSV 或 Excel，最多 50 MiB。表格需有一行唯一表头。</p>
             <label className="analysis-upload">
               <Upload size={17} aria-hidden="true" />选择文件
-              <input aria-label="选择要上传的表格" disabled={!!busy} type="file" accept=".csv,.xlsx" onChange={(event) => {
+              <Input aria-label="选择要上传的表格" disabled={!!busy} type="file" accept=".csv,.xlsx" onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
                 event.currentTarget.value = "";
                 if (file) void choose((signal) => api<Dataset>(`/analysis/datasets/upload${uploadPath}`, {
@@ -157,10 +175,10 @@ export function Analysis() {
             </label>
           </section>
         </div>
-        <button type="button" className="analysis-sample" disabled={!!busy}
+        <Button className="analysis-sample" disabled={!!busy}
           onClick={() => void choose((signal) => api<Dataset>("/analysis/datasets", { method: "POST", signal, body: encode({ sourceId: "sample", ...sourceBody }) }))}>
           使用订单样例<ArrowRight size={16} />
-        </button>
+        </Button>
       </div>}
       {stage === "model" && dataset && <ModelReview key={dataset.id} dataset={dataset}
         onSave={(value) => remember(value, true)} onPublished={(value) => open(dataset, value.id)} />}
@@ -262,14 +280,14 @@ function ModelReview({ dataset, onSave, onPublished }: {
   return <div className="analysis-review">
     <header className="analysis-heading">
       <div><h1>确认建模建议</h1><p>{dataset.sourceName}{preview?.sheet ? ` · ${preview.sheet}` : ""}</p></div>
-      {model && <label>报表名称<input value={name} onChange={(event) => setName(event.target.value)} maxLength={128} /></label>}
+      {model && <label>报表名称<Input value={name} onChange={(event) => setName(event.target.value)} maxLength={128} /></label>}
     </header>
-    {error && <div className="analysis-alert" role="alert">{error}<button type="button" onClick={() => setAttempt(attempt + 1)}>重试预览</button></div>}
+    {error && <div className="analysis-alert" role="alert">{error}<Button onClick={() => setAttempt(attempt + 1)}>重试预览</Button></div>}
     {preview && preview.sheets.length > 1 && <label className="analysis-field">工作表
-      <select value={sheet || preview.sheet || ""} disabled={saving} onChange={(event) => { setPreview(undefined); setModel(null); setSheet(event.target.value); }}>
+      <Select value={sheet || preview.sheet || ""} disabled={saving} onChange={(event) => { setPreview(undefined); setModel(null); setSheet(event.target.value); }}>
         <option value="" disabled>选择一张工作表</option>
         {preview.sheets.map((value) => <option key={value}>{value}</option>)}
-      </select>
+      </Select>
     </label>}
     {!preview && !error && <p role="status">正在读取表头和样本…</p>}
     {preview?.suggestion && model && <>
@@ -290,52 +308,54 @@ function ModelReview({ dataset, onSave, onPublished }: {
             const rule = model.fields.find((item) => item.fieldId === field.id);
             return rule ? <div key={field.id}>
               <label>{field.label}<small>{field.reason}</small></label>
-              <select aria-label={`${field.label}用途`} value={rule.role} onChange={(event) => setRule(rule, event.target.value as Rule["role"])} disabled={saving}>
+              <Select aria-label={`${field.label}用途`} value={rule.role} onChange={(event) => setRule(rule, event.target.value as Rule["role"])} disabled={saving}>
                 {roles.map(({value, label}) => <option key={value} value={value}>{label}</option>)}
-              </select>
+              </Select>
             </div> : null;
           })}
         </div>
         <details className="analysis-settings">
           <summary>编辑粒度、显示名称和解析规则</summary>
           <div className="analysis-settings-fields">
-            <label>每行代表什么<input value={model.grain} onChange={(event) => setModel({ ...model, grain: event.target.value })} /></label>
-            {date && <label>日期格式<select value={model.dateFormat} onChange={(event) => setModel({ ...model, dateFormat: event.target.value })}>
+            <label>每行代表什么<Input value={model.grain} onChange={(event) => setModel({ ...model, grain: event.target.value })} /></label>
+            {date && <label>日期格式<Select value={model.dateFormat} onChange={(event) => setModel({ ...model, dateFormat: event.target.value })}>
               <option value="">请选择日期格式</option><option value="iso">年-月-日（2026-04-03）</option>
               <option value="dmy">日/月/年（03/04/2026）</option><option value="mdy">月/日/年（04/03/2026）</option>
               <option value="timestamp">含时区的 ISO 时间戳</option>
-            </select></label>}
-            {date && model.dateFormat === "timestamp" && <label>报表时区与 UTC 的分钟差<input type="number" min={-840} max={840} value={model.offsetMinutes}
+            </Select></label>}
+            {date && model.dateFormat === "timestamp" && <label>报表时区与 UTC 的分钟差<Input type="number" min={-840} max={840} value={model.offsetMinutes}
               onChange={(event) => setModel({ ...model, offsetMinutes: Number(event.target.value) })} /></label>}
-            {money && <label>金额格式<select value={model.amountFormat} onChange={(event) => setModel({ ...model, amountFormat: event.target.value })}>
+            {money && <label>金额格式<Select value={model.amountFormat} onChange={(event) => setModel({ ...model, amountFormat: event.target.value })}>
               <option value="point">1234.50</option><option value="pointGrouped">1,234.50</option>
               <option value="comma">1234,50</option><option value="commaGrouped">1.234,50</option>
-            </select></label>}
-            {money && <label className="analysis-checkbox"><input type="checkbox" checked={model.allowEmptyAmount}
+            </Select></label>}
+            {money && <label className="analysis-checkbox"><Input type="checkbox" checked={model.allowEmptyAmount}
               onChange={(event) => setModel({ ...model, allowEmptyAmount: event.target.checked })} />空金额不参与求和</label>}
             {model.fields.filter((field) => field.role !== "omit").map((field) => <label key={field.fieldId}>
               {preview.fields.find((column) => column.id === field.fieldId)?.label}的显示名称
-              <input value={field.label} maxLength={128}
+              <Input value={field.label} maxLength={128}
                 onChange={(event) => setModel({ ...model, fields: model.fields.map((value) => value.fieldId === field.fieldId ? { ...value, label: event.target.value } : value) })} />
             </label>)}
           </div>
         </details>
         {(money || unit || (date && !model.dateFormat)) && <div className="analysis-decisions">
           {date && !model.dateFormat && <label>确认「{date.label}」的日期顺序
-            <select value="" onChange={(event) => setModel({ ...model, dateFormat: event.target.value })}>
+            <Select value="" onChange={(event) => setModel({ ...model, dateFormat: event.target.value })}>
               <option value="">选择日期格式</option><option value="iso">年-月-日</option>
               <option value="dmy">日/月/年</option><option value="mdy">月/日/年</option>
               <option value="timestamp">含时区的 ISO 时间戳</option>
-            </select>
+            </Select>
           </label>}
-          {(money || unit) && <label>币种代码<input aria-label="币种代码" placeholder="CNY" value={model.currency ?? ""} maxLength={3}
+          {(money || unit) && <label>币种代码<Input aria-label="币种代码" placeholder="CNY" value={model.currency ?? ""} maxLength={3}
             onChange={(event) => setModel({ ...model, currency: event.target.value.toUpperCase() })} /></label>}
-          {money && <label className="analysis-checkbox"><input type="checkbox" checked={model.confirmLineAmount}
+          {money && <label className="analysis-checkbox"><Input type="checkbox" checked={model.confirmLineAmount}
             onChange={(event) => setModel({ ...model, confirmLineAmount: event.target.checked })} />「{money.label}」是每一行的金额</label>}
-          {money && !unit && <label className="analysis-checkbox"><input type="checkbox" checked={model.confirmSingleCurrency}
+          {money && !unit && <label className="analysis-checkbox"><Input type="checkbox" checked={model.confirmSingleCurrency}
             onChange={(event) => setModel({ ...model, confirmSingleCurrency: event.target.checked })} />确认这张表使用同一币种</label>}
         </div>}
       </section>
+      <MetricEditor metrics={model.metrics} fields={model.fields} disabled={saving}
+        onChange={(metrics) => setModel({ ...model, metrics })} />
       {publication?.state === "rejected" && <div className="analysis-alert" role="alert">
         <strong>{publication.error ?? `核对了 ${publication.scannedRows} 条记录，发现 ${publication.affectedRows} 条需要修改`}</strong>
         {publication.issues && <ul>{publication.issues.map((issue) => <li key={`${issue.row}/${issue.fieldId}`}>
@@ -344,11 +364,11 @@ function ModelReview({ dataset, onSave, onPublished }: {
       </div>}
       <footer className="analysis-actions">
         <span role="status">{status}</span>
-        {saving && <button type="button" onClick={() => { action.current?.abort(); setStatus(""); }}>取消</button>}
-        <button type="button" disabled={saving} onClick={() => void save(false)}>保存草稿</button>
-        <button type="button" className="analysis-primary" disabled={saving} onClick={() => void save(true)}>
+        {saving && <Button onClick={() => { action.current?.abort(); setStatus(""); }}>取消</Button>}
+        <Button disabled={saving} onClick={() => void save(false)}>保存草稿</Button>
+        <Button className="analysis-primary" disabled={saving} onClick={() => void save(true)}>
           {operation ? "继续核对" : "生成报表"}<ArrowRight size={16} />
-        </button>
+        </Button>
       </footer>
     </>}
   </div>;

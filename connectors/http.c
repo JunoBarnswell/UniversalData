@@ -1061,6 +1061,8 @@ static ud_status network_s3_headers(ud_context *memory, struct curl_slist **head
     return status;
 }
 
+#endif
+
 ud_status ud_network_s3_call(const ud_component_context *context,
                              ud_connection_lease *connection,
                              const ud_network_s3_options *options,
@@ -1201,6 +1203,7 @@ ud_status ud_network_s3_call(const ud_component_context *context,
 #endif
 }
 
+#ifdef UD_WITH_HTTP
 static ud_status network_file_open(const ud_component_context *context, const ud_network_options *options,
                                    FILE **file, uint64_t *size) {
     if (!options->path)

@@ -23,6 +23,8 @@ if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticke
     throw new InvalidDataException("Incompatible Worker request");
 if (request.AnalysisFiles is not null && request.Mode is not ("analysis" or "file"))
     throw new InvalidDataException("Invalid private analysis file scope");
+if (request.AnalysisFiles?.ScratchTicket is { } scratchTicket && (request.Mode != "analysis" || scratchTicket != request.Ticket))
+    throw new InvalidDataException("Invalid private analysis scratch ticket");
 var policy = request.Policy with
 {
     Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated,

@@ -75,6 +75,14 @@ if(TARGET ud_compute)
   add_executable(test_compute compute.c)
   target_link_libraries(test_compute PRIVATE ud_compute)
   add_test(NAME compute_plan COMMAND test_compute)
+  add_executable(test_metric_distinct metric_distinct.c)
+  target_link_libraries(test_metric_distinct PRIVATE ud_compute)
+  add_test(NAME metric_exact_distinct_spill COMMAND test_metric_distinct)
+  set_tests_properties(metric_exact_distinct_spill PROPERTIES TIMEOUT 60)
+  add_executable(test_metric_expression metric_expression.c)
+  target_link_libraries(test_metric_expression PRIVATE ud_expression)
+  add_test(NAME metric_decimal_derives COMMAND test_metric_expression)
+  set_tests_properties(metric_decimal_derives PROPERTIES TIMEOUT 60)
   add_executable(test_nested nested.c)
   target_link_libraries(test_nested PRIVATE ud_compute)
   add_test(NAME nested_columnar_arrow COMMAND test_nested)
@@ -691,6 +699,20 @@ if(TARGET ud_package)
     set(schedule_plugins)
     if(TARGET ud_connector_sqlite)
       set(schedule_plugins $<TARGET_FILE:ud_connector_sqlite>)
+      if(UD_WITH_ARROW_FILES)
+        add_test(NAME analysis_team_dashboard COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/analysis_team_dashboard.py --dotnet ${UD_DOTNET}
+          --management ${PROJECT_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll
+          --worker ${PROJECT_BINARY_DIR}/hosts/product/worker/ud_worker.dll
+          --plugin $<TARGET_FILE:ud_connector_sqlite> --work ${CMAKE_CURRENT_BINARY_DIR}/analysis-team)
+        set_tests_properties(analysis_team_dashboard PROPERTIES LABELS "analysis;sqlite" TIMEOUT 240)
+        add_test(NAME analysis_sql_sources COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/analysis_sql_sources.py --dotnet ${UD_DOTNET}
+          --management ${PROJECT_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll
+          --worker ${PROJECT_BINARY_DIR}/hosts/product/worker/ud_worker.dll
+          --plugin $<TARGET_FILE:ud_connector_sqlite> --work ${CMAKE_CURRENT_BINARY_DIR}/analysis-sql)
+        set_tests_properties(analysis_sql_sources PROPERTIES LABELS "analysis;sqlite" TIMEOUT 240)
+      endif()
     endif()
     add_test(NAME jobs_schedule_catalog COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/jobs_schedule.py ${UD_DOTNET}
@@ -821,6 +843,41 @@ if(TARGET ud_package)
   endif()
 endif()
 
+if(WIN32)
+  # Direct launches and single-target IDE builds need the same runtime as CTest.
+  # All native test executables in this directory use the same output directory.
+  get_property(test_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+  foreach(test_target IN LISTS test_targets)
+    get_target_property(test_type ${test_target} TYPE)
+    if(test_type STREQUAL "EXECUTABLE")
+      if(MSVC)
+        # The SDK accepts UTF-8 paths, including paths supplied to main via argv.
+        target_sources(${test_target} PRIVATE windows-utf8.manifest)
+      endif()
+      if(TARGET ud_core_windows_runtime AND NOT TARGET ud_test_windows_runtime)
+        add_custom_target(ud_test_windows_runtime
+          COMMAND ${CMAKE_COMMAND} -E copy_directory "${ud_core_windows_runtime_DIRECTORY}" "$<TARGET_FILE_DIR:${test_target}>"
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ud_data>" "$<TARGET_FILE_DIR:${test_target}>/"
+          DEPENDS ud_core_windows_runtime VERBATIM)
+      endif()
+      if(TARGET ud_test_windows_runtime)
+        add_dependencies(${test_target} ud_test_windows_runtime)
+      else()
+        list(APPEND standalone_tests ${test_target})
+      endif()
+    endif()
+  endforeach()
+  if(standalone_tests)
+    # A component-only build has no ud_data image to scan. Resolve the imports
+    # of each linked test directly, using the same SDK search as a full build.
+    ud_windows_runtime(ud_component_test_runtime TEST_EXECUTABLES ${standalone_tests}
+      DIRECTORIES "${UDArrow_RUNTIME_DIRECTORY}"
+      LINK_INPUTS ICU::uc ICU::i18n "${ICU_UC_LIBRARY_RELEASE}" "${ICU_I18N_LIBRARY_RELEASE}" "${UD_PCRE2_LIBRARY}"
+        ZLIB::ZLIB EXPAT::EXPAT SQLite::SQLite3 CURL::libcurl UDArrow::Arrow UDArrow::Parquet
+        PostgreSQL::PostgreSQL ${LIBXML2_LIBRARIES} ${LIBXSLT_LIBRARIES})
+  endif()
+endif()
+
 if(WIN32 AND TARGET ud_data)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
   set(runtime_plugins)
@@ -830,6 +887,10 @@ if(WIN32 AND TARGET ud_data)
     endif()
   endforeach()
   set(runtime_library "$<TARGET_FILE:ud_data>")
+  set(runtime_executables)
+  if(TARGET test_metric_distinct)
+    list(APPEND runtime_executables "$<TARGET_FILE:test_metric_distinct>" "$<TARGET_FILE:test_metric_expression>")
+  endif()
   if(TARGET ud_cli)
     list(APPEND runtime_library "$<TARGET_FILE_DIR:ud_cli>/ud_data.dll"
       "$<TARGET_FILE_DIR:ud_worker>/ud_data.dll" "$<TARGET_FILE_DIR:ud_cli>/../management/ud_data.dll"
@@ -840,6 +901,6 @@ if(WIN32 AND TARGET ud_data)
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>" "PYTHONUTF8=set:1")
   add_test(NAME sql_etl_windows_runtime COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/windows_sql_runtime.py --library ${runtime_library}
-    --version "${UD_SDK_VERSION}" --plugins ${runtime_plugins})
-  set_tests_properties(sql_etl_windows_runtime PROPERTIES LABELS "sql-etl;windows-runtime" TIMEOUT 30)
+    --version "${UD_SDK_VERSION}" --plugins ${runtime_plugins} --executables ${runtime_executables})
+  set_tests_properties(sql_etl_windows_runtime PROPERTIES LABELS "sql-etl;windows-runtime" TIMEOUT 150)
 endif()

@@ -12,9 +12,9 @@ else()
 endif()
 
 function(ud_windows_runtime name)
-  cmake_parse_arguments(PARSE_ARGV 1 runtime "" "BUILD_DIRECTORY"
-    "LIBRARIES;MODULES;LINK_INPUTS;DATA_DLLS;EXTERNAL_DLLS")
-  set(runtime_dirs ${UD_WINDOWS_RUNTIME_DIRS})
+  cmake_parse_arguments(PARSE_ARGV 1 runtime "" "BUILD_DIRECTORY;POST_LINK_TARGET"
+    "LIBRARIES;MODULES;LINK_INPUTS;DATA_DLLS;EXTERNAL_DLLS;DIRECTORIES;TEST_EXECUTABLES")
+  set(runtime_dirs ${UD_WINDOWS_RUNTIME_DIRS} ${runtime_DIRECTORIES})
   foreach(link_input IN LISTS runtime_LINK_INPUTS)
     if(TARGET "${link_input}")
       get_target_property(kind "${link_input}" TYPE)
@@ -52,6 +52,17 @@ function(ud_windows_runtime name)
     "${CMAKE_CURRENT_BINARY_DIR}/${name}.cmake.in" @ONLY)
   set(command_file "${staged_directory}.cmake")
   file(GENERATE OUTPUT "${command_file}" INPUT "${CMAKE_CURRENT_BINARY_DIR}/${name}.cmake.in")
+  if(runtime_TEST_EXECUTABLES)
+    foreach(target IN LISTS runtime_TEST_EXECUTABLES)
+      add_custom_command(TARGET ${target} POST_BUILD COMMAND "${CMAKE_COMMAND}"
+        "-Dtest_executable=$<TARGET_FILE:${target}>" -P "${command_file}" VERBATIM)
+    endforeach()
+    return()
+  endif()
+  if(runtime_POST_LINK_TARGET)
+    add_custom_command(TARGET ${runtime_POST_LINK_TARGET} POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -P "${command_file}" VERBATIM)
+  endif()
   add_custom_target(${name} ALL COMMAND "${CMAKE_COMMAND}" -P "${command_file}"
     DEPENDS ${runtime_LIBRARIES} ${runtime_MODULES} VERBATIM)
   set(${name}_DIRECTORY "${staged_directory}" PARENT_SCOPE)
